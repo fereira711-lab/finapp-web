@@ -1,54 +1,25 @@
 <!DOCTYPE html>
-<!-- updated: 2026-03-25 -->
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { margin: 0; background: #0F172A; color: white; font-family: sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; gap: 16px; }
-    button { background: #6366F1; color: white; border: none; padding: 14px 28px; border-radius: 12px; font-size: 16px; cursor: pointer; }
-  </style>
+  <style>body{background:#0F172A;color:white;font-family:sans-serif;padding:20px;}</style>
 </head>
 <body>
-  <p id="status">Carregando...</p>
+  <h2>Debug Pluggy</h2>
+  <div id="log"></div>
   <script>
-    var token = new URLSearchParams(window.location.search).get('token');
-    if (!token) {
-      document.getElementById('status').textContent = 'Token não encontrado';
-    } else {
-      document.getElementById('status').textContent = 'Aguarde...';
-      var attempts = 0;
-      function loadPluggy() {
-        attempts++;
-        var s = document.createElement('script');
-        s.src = 'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js?' + Date.now();
-        s.onload = function() {
-          document.getElementById('status').textContent = '';
-          new PluggyConnect({
-            connectToken: token,
-            onSuccess: function(d) {
-              if (window.opener) window.opener.postMessage({type:'SUCCESS',data:d}, '*');
-              window.close();
-            },
-            onError: function(e) {
-              document.getElementById('status').textContent = 'Erro: ' + String(e);
-            },
-            onClose: function() {
-              if (window.opener) window.opener.postMessage({type:'CLOSE'}, '*');
-              window.close();
-            }
-          }).init();
-        };
-        s.onerror = function() {
-          if (attempts < 3) {
-            setTimeout(loadPluggy, 2000);
-          } else {
-            document.getElementById('status').innerHTML = 'Erro ao carregar o Pluggy.<br><button onclick="location.reload()">Tentar novamente</button>';
-          }
-        };
-        document.head.appendChild(s);
-      }
-      loadPluggy();
+    function log(msg) {
+      var d = document.getElementById('log');
+      d.innerHTML += '<p>' + new Date().toISOString().substr(11,8) + ' - ' + msg + '</p>';
     }
+    log('Iniciando...');
+    var s = document.createElement('script');
+    s.src = 'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js';
+    log('Carregando: ' + s.src);
+    s.onload = function() { log('Script carregado! PluggyConnect: ' + typeof PluggyConnect); };
+    s.onerror = function(e) { log('ERRO ao carregar script: ' + JSON.stringify(e.type)); };
+    document.head.appendChild(s);
+    setTimeout(function() { log('Timeout - PluggyConnect: ' + typeof window.PluggyConnect); }, 5000);
   </script>
 </body>
 </html>
