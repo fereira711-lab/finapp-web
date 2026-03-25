@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ArrowLeftRight, Receipt, Bot, User } from "lucide-react";
+import { Home, ArrowLeftRight, Receipt, Bot, User, BarChart3 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Início", icon: Home },
   { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
+  { href: "/reports", label: "Relatórios", icon: BarChart3 },
   { href: "/bills", label: "Contas", icon: Receipt },
   { href: "/ai", label: "IA", icon: Bot },
   { href: "/profile", label: "Perfil", icon: User },
