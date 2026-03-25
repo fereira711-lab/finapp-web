@@ -19,7 +19,7 @@
       function loadPluggy() {
         attempts++;
         var s = document.createElement('script');
-        s.src = 'https://cdn.pluggy.ai/pluggy-connect/v2/pluggy-connect.js?' + Date.now();
+        s.src = 'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js?' + Date.now();
         s.crossOrigin = 'anonymous';
         s.onload = function() {
           document.getElementById('status').textContent = '';
