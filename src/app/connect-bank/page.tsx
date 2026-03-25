@@ -1,40 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PluggyConnect } from "react-pluggy-connect";
+import Script from "next/script";
 import { createClient } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
 import Button from "@/components/Button";
 
 type Status = "idle" | "loading" | "open" | "success" | "error";
 
+declare global {
+  interface Window {
+    PluggyConnect: new (config: {
+      connectToken: string;
+      includeSandbox?: boolean;
+      theme?: string;
+      onSuccess: (data: { item: { id: string } }) => void;
+      onError: (error: { message?: string }) => void;
+      onClose: () => void;
+    }) => { init: () => void; destroy?: () => void };
+  }
+}
+
 export default function ConnectBankPage() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [connectToken, setConnectToken] = useState("");
-
-  async function handleConnect() {
-    setStatus("loading");
-    setErrorMsg("");
-
-    try {
-      const res = await fetch("/api/pluggy-token", { method: "POST" });
-      if (!res.ok) {
-        setStatus("error");
-        setErrorMsg("Erro ao gerar token de conexão.");
-        return;
-      }
-
-      const data = await res.json();
-      setConnectToken(data.connectToken);
-      setStatus("open");
-    } catch {
-      setStatus("error");
-      setErrorMsg("Erro ao conectar. Tente novamente.");
-    }
-  }
+  const [scriptReady, setScriptReady] = useState(false);
+  const widgetRef = useRef<{ init: () => void; destroy?: () => void } | null>(null);
 
   const onSuccess = useCallback(
     async (data: { item: { id: string } }) => {
@@ -67,7 +60,7 @@ export default function ConnectBankPage() {
           return;
         }
 
-        router.push("/");
+        router.push("/dashboard");
       } catch {
         setStatus("error");
         setErrorMsg("Erro ao salvar conta conectada.");
@@ -82,14 +75,55 @@ export default function ConnectBankPage() {
   }, []);
 
   const onClose = useCallback(() => {
-    if (status !== "success") {
-      setStatus("idle");
-      setConnectToken("");
+    setStatus((prev) => (prev !== "success" ? "idle" : prev));
+  }, []);
+
+  async function handleConnect() {
+    setStatus("loading");
+    setErrorMsg("");
+
+    try {
+      const res = await fetch("/api/pluggy-token", { method: "POST" });
+      if (!res.ok) {
+        setStatus("error");
+        setErrorMsg("Erro ao gerar token de conexão.");
+        return;
+      }
+
+      const { connectToken } = await res.json();
+
+      if (!scriptReady || !window.PluggyConnect) {
+        setStatus("error");
+        setErrorMsg("Widget ainda carregando. Tente novamente.");
+        return;
+      }
+
+      const widget = new window.PluggyConnect({
+        connectToken,
+        includeSandbox: false,
+        theme: "dark",
+        onSuccess,
+        onError,
+        onClose,
+      });
+
+      widgetRef.current = widget;
+      widget.init();
+      setStatus("open");
+    } catch {
+      setStatus("error");
+      setErrorMsg("Erro ao conectar. Tente novamente.");
     }
-  }, [status]);
+  }
 
   return (
     <AppShell>
+      <Script
+        src="https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js"
+        strategy="lazyOnload"
+        onReady={() => setScriptReady(true)}
+      />
+
       <h1 className="text-2xl font-bold mb-6">Conectar Banco</h1>
 
       <div className="bg-dark-800 rounded-2xl p-6 border border-dark-700 text-center">
@@ -121,17 +155,6 @@ export default function ConnectBankPage() {
           </p>
         )}
       </div>
-
-      {status === "open" && connectToken && (
-        <PluggyConnect
-          connectToken={connectToken}
-          includeSandbox={false}
-          theme="dark"
-          onSuccess={onSuccess}
-          onError={onError}
-          onClose={onClose}
-        />
-      )}
     </AppShell>
   );
 }
