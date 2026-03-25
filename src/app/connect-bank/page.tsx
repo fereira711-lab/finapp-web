@@ -1,71 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import AppShell from "@/components/AppShell";
 import Button from "@/components/Button";
 
-declare global {
-  interface Window {
-    PluggyConnect: new (config: {
-      connectToken: string;
-      onSuccess: (data: unknown) => void;
-      onError: (error: unknown) => void;
-      onClose: () => void;
-    }) => { init: () => void };
-  }
-}
-
 export default function ConnectBankPage() {
-  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const scriptLoaded = useRef(false);
-  const router = useRouter();
-
-  useEffect(() => {
-    if (scriptLoaded.current) return;
-    const script = document.createElement("script");
-    script.src = "https://cdn.pluggy.ai/pluggy-connect/v2/pluggy-connect.js";
-    script.onload = () => {
-      scriptLoaded.current = true;
-    };
-    document.head.appendChild(script);
-  }, []);
 
   async function handleConnect() {
     setStatus("loading");
     setErrorMsg("");
 
-    const res = await fetch("/api/pluggy-token", { method: "POST" });
-    if (!res.ok) {
-      setStatus("error");
-      setErrorMsg("Erro ao gerar token de conexão.");
-      return;
-    }
-
-    const { connectToken } = await res.json();
-
-    if (!window.PluggyConnect) {
-      setStatus("error");
-      setErrorMsg("Script do Pluggy não carregou.");
-      return;
-    }
-
-    setStatus("ready");
-
-    new window.PluggyConnect({
-      connectToken,
-      onSuccess: () => {
-        router.push("/profile");
-      },
-      onError: (err) => {
+    try {
+      const res = await fetch("/api/pluggy-token", { method: "POST" });
+      if (!res.ok) {
         setStatus("error");
-        setErrorMsg("Erro na conexão: " + String(err));
-      },
-      onClose: () => {
-        setStatus("idle");
-      },
-    }).init();
+        setErrorMsg("Erro ao gerar token de conexão.");
+        return;
+      }
+
+      const { connectToken } = await res.json();
+      window.location.href = `https://frolicking-taiyaki-eae8ed.netlify.app/pluggy.html?token=${connectToken}`;
+    } catch {
+      setStatus("error");
+      setErrorMsg("Erro ao conectar. Tente novamente.");
+    }
   }
 
   return (
