@@ -9,17 +9,16 @@
   <div id="log"></div>
   <script>
     function log(msg) {
-      var d = document.getElementById('log');
-      d.innerHTML += '<p>' + new Date().toISOString().substr(11,8) + ' - ' + msg + '</p>';
+      document.getElementById('log').innerHTML += '<p>' + msg + '</p>';
     }
     log('Iniciando...');
+    var token = new URLSearchParams(window.location.search).get('token');
+    log('Token: ' + (token ? token.substring(0,20)+'...' : 'NAO ENCONTRADO'));
     var s = document.createElement('script');
     s.src = 'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js';
-    log('Carregando: ' + s.src);
-    s.onload = function() { log('Script carregado! PluggyConnect: ' + typeof PluggyConnect); };
-    s.onerror = function(e) { log('ERRO ao carregar script: ' + JSON.stringify(e.type)); };
+    s.onload = function() { log('Script OK! PluggyConnect: ' + typeof PluggyConnect); };
+    s.onerror = function() { log('ERRO ao carregar script'); };
     document.head.appendChild(s);
-    setTimeout(function() { log('Timeout - PluggyConnect: ' + typeof window.PluggyConnect); }, 5000);
   </script>
 </body>
 </html>
