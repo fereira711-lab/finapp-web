@@ -158,14 +158,14 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <h1 className="hidden md:block text-2xl font-bold mb-6">Dashboard</h1>
 
       {loading ? (
         <div className="text-gray-400">Carregando...</div>
       ) : (
         <div className="space-y-6">
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             <Card
               title="Saldo Total"
               value={formatCurrency(summary.balance)}
@@ -195,22 +195,22 @@ export default function DashboardPage() {
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Donut Chart */}
-            <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700">
+            <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700">
               <h2 className="text-sm text-gray-400 mb-4">Gastos por Categoria</h2>
               {categoryData.length === 0 ? (
                 <p className="text-gray-500 text-sm text-center py-8">
                   Sem despesas este mês
                 </p>
               ) : (
-                <div className="flex items-center gap-4">
-                  <ResponsiveContainer width="50%" height={200}>
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <ResponsiveContainer width="100%" height={200} className="sm:!w-1/2">
                     <PieChart>
                       <Pie
                         data={categoryData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={50}
-                        outerRadius={80}
+                        innerRadius={45}
+                        outerRadius={75}
                         dataKey="value"
                         stroke="none"
                       >
@@ -229,17 +229,17 @@ export default function DashboardPage() {
                       />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="flex-1 space-y-2">
+                  <div className="w-full sm:flex-1 space-y-2">
                     {categoryData.map((item, i) => (
                       <div key={i} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-3 h-3 rounded-full"
+                            className="w-3 h-3 rounded-full flex-shrink-0"
                             style={{ backgroundColor: item.color }}
                           />
-                          <span className="text-gray-300">{item.name}</span>
+                          <span className="text-gray-300 text-xs sm:text-sm">{item.name}</span>
                         </div>
-                        <span className="text-gray-400">{formatCurrency(item.value)}</span>
+                        <span className="text-gray-400 text-xs sm:text-sm">{formatCurrency(item.value)}</span>
                       </div>
                     ))}
                   </div>
@@ -248,21 +248,22 @@ export default function DashboardPage() {
             </div>
 
             {/* Bar Chart */}
-            <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700">
+            <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700">
               <h2 className="text-sm text-gray-400 mb-4">Receitas vs Despesas (6 meses)</h2>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={monthlyData}>
+                <BarChart data={monthlyData} margin={{ left: -10, right: 5 }}>
                   <XAxis
                     dataKey="name"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fill: "#94A3B8", fontSize: 12 }}
+                    tick={{ fill: "#94A3B8", fontSize: 11 }}
                   />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fill: "#94A3B8", fontSize: 12 }}
+                    tick={{ fill: "#94A3B8", fontSize: 11 }}
                     tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                    width={40}
                   />
                   <Tooltip
                     formatter={(value) => formatCurrency(Number(value))}
@@ -274,7 +275,7 @@ export default function DashboardPage() {
                     }}
                   />
                   <Legend
-                    wrapperStyle={{ color: "#94A3B8", fontSize: 12 }}
+                    wrapperStyle={{ color: "#94A3B8", fontSize: 11 }}
                   />
                   <Bar dataKey="receitas" fill="#10B981" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="despesas" fill="#EF4444" radius={[4, 4, 0, 0]} />

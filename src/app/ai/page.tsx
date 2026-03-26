@@ -72,9 +72,9 @@ export default function AIPage() {
 
   return (
     <AppShell>
-      <h1 className="text-2xl font-bold mb-4">IA Financeira</h1>
+      <h1 className="hidden md:block text-2xl font-bold mb-4">IA Financeira</h1>
 
-      <div className="bg-dark-800 rounded-2xl border border-dark-700 flex flex-col h-[calc(100vh-200px)] md:h-[calc(100vh-140px)]">
+      <div className="bg-dark-800 rounded-2xl border border-dark-700 flex flex-col h-[calc(100vh-220px)] md:h-[calc(100vh-140px)]">
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (

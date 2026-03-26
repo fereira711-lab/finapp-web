@@ -68,10 +68,10 @@ export default function ProfilePage() {
 
   return (
     <AppShell>
-      <h1 className="text-2xl font-bold mb-6">Perfil</h1>
+      <h1 className="hidden md:block text-2xl font-bold mb-6">Perfil</h1>
 
       <div className="space-y-6">
-        <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700 space-y-4">
+        <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700 space-y-4">
           <h2 className="text-lg font-semibold">Dados pessoais</h2>
           <Input
             label="Nome"
@@ -83,8 +83,8 @@ export default function ProfilePage() {
           </Button>
         </div>
 
-        <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
             <h2 className="text-lg font-semibold">Contas bancárias</h2>
             <Link href="/connect-bank">
               <Button variant="secondary" className="!py-2 !px-4 text-xs flex items-center gap-2">

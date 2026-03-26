@@ -93,14 +93,14 @@ export default function TransactionsPage() {
 
   return (
     <AppShell>
-      <h1 className="text-2xl font-bold mb-6">Transações</h1>
+      <h1 className="hidden md:block text-2xl font-bold mb-6">Transações</h1>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="bg-dark-800 border border-dark-700 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-primary"
+          className="bg-dark-800 border border-dark-700 text-white rounded-xl px-4 py-3 text-base md:text-sm focus:outline-none focus:border-primary"
         >
           {categoryOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -109,15 +109,15 @@ export default function TransactionsPage() {
           ))}
         </select>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {PERIODS.map((p) => (
             <button
               key={p.value}
               onClick={() => setPeriod(p.value)}
-              className={`px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${
+              className={`px-3 md:px-4 py-2.5 rounded-xl text-sm whitespace-nowrap transition-colors ${
                 period === p.value
                   ? "bg-primary text-white"
-                  : "bg-dark-800 text-gray-400 hover:text-white border border-dark-700"
+                  : "bg-dark-800 text-gray-400 active:text-white border border-dark-700"
               }`}
             >
               {p.label}
