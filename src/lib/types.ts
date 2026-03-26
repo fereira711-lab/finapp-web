@@ -33,6 +33,9 @@ export interface Bill {
   due_date: string;
   type: "payable" | "receivable";
   status: "pending" | "paid" | "overdue";
+  recurrent: boolean;
+  recurrence_day: number | null;
+  notes: string | null;
 }
 
 export interface ChatMessage {
