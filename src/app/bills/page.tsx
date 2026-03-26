@@ -96,7 +96,7 @@ export default function BillsPage() {
     setSaving(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setSaving(false); return; }
 
     const today = new Date().toISOString().split("T")[0];
     const status = dueDate < today ? "overdue" : "pending";
@@ -162,11 +162,11 @@ export default function BillsPage() {
 
       {/* Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowForm(false)} />
           <form
             onSubmit={handleAdd}
-            className="relative glass rounded-t-3xl rounded-b-none p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto"
+            className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold">Nova conta</h2>
