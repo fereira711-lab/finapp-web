@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Bill } from "@/lib/types";
 import AppShell from "@/components/AppShell";
-import { Plus, Check, RefreshCw, X } from "lucide-react";
+import { Plus, Check, RefreshCw, X, Pencil, Trash2 } from "lucide-react";
 
 type FilterKey = "Todas" | "payable" | "receivable" | "pending" | "paid";
 
@@ -36,11 +36,13 @@ export default function BillsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [type, setType] = useState<"payable" | "receivable">("payable");
+  const [status, setStatus] = useState<"pending" | "paid" | "overdue">("pending");
   const [recurrent, setRecurrent] = useState(false);
   const [notes, setNotes] = useState("");
 
@@ -91,18 +93,47 @@ export default function BillsPage() {
     .filter((b) => b.type === "receivable")
     .reduce((s, b) => s + b.amount, 0);
 
-  async function handleAdd(e: React.FormEvent) {
+  function resetForm() {
+    setDesc("");
+    setAmount("");
+    setDueDate("");
+    setType("payable");
+    setStatus("pending");
+    setRecurrent(false);
+    setNotes("");
+    setEditingId(null);
+  }
+
+  function openNew() {
+    resetForm();
+    setShowForm(true);
+  }
+
+  function openEdit(b: Bill) {
+    setEditingId(b.id);
+    setDesc(b.description);
+    setAmount(String(b.amount));
+    setDueDate(b.due_date);
+    setType(b.type);
+    setStatus(b.status);
+    setRecurrent(b.recurrent);
+    setNotes(b.notes || "");
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    resetForm();
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaving(false); return; }
 
-    const today = new Date().toISOString().split("T")[0];
-    const status = dueDate < today ? "overdue" : "pending";
-
-    await supabase.from("bills").insert({
-      user_id: user.id,
+    const billData = {
       description: desc.trim(),
       amount: parseFloat(amount),
       due_date: dueDate,
@@ -111,15 +142,30 @@ export default function BillsPage() {
       recurrent,
       recurrence_day: recurrent ? new Date(dueDate).getDate() : null,
       notes: notes.trim() || null,
-    });
+    };
 
-    setDesc("");
-    setAmount("");
-    setDueDate("");
-    setType("payable");
-    setRecurrent(false);
-    setNotes("");
-    setShowForm(false);
+    if (editingId) {
+      await supabase.from("bills").update(billData).eq("id", editingId);
+    } else {
+      const today = new Date().toISOString().split("T")[0];
+      if (status === "pending" && dueDate < today) {
+        billData.status = "overdue";
+      }
+      await supabase.from("bills").insert({ user_id: user.id, ...billData });
+    }
+
+    closeForm();
+    setSaving(false);
+    setLoading(true);
+    load();
+  }
+
+  async function handleDelete() {
+    if (!editingId) return;
+    setSaving(true);
+    const supabase = createClient();
+    await supabase.from("bills").delete().eq("id", editingId);
+    closeForm();
     setSaving(false);
     setLoading(true);
     load();
@@ -140,7 +186,7 @@ export default function BillsPage() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="label-upper">Gerenciar Contas</h2>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={openNew}
           className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs uppercase tracking-wider px-4 py-2.5 rounded-xl transition-colors"
         >
           <Plus size={16} />
@@ -160,17 +206,17 @@ export default function BillsPage() {
         </div>
       </div>
 
-      {/* Modal */}
+      {/* Modal Criar/Editar */}
       {showForm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowForm(false)} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeForm} />
           <form
-            onSubmit={handleAdd}
+            onSubmit={handleSubmit}
             className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-bold">Nova conta</h2>
-              <button type="button" onClick={() => setShowForm(false)} className="text-white/45 hover:text-white p-1">
+              <h2 className="text-lg font-bold">{editingId ? "Editar conta" : "Nova conta"}</h2>
+              <button type="button" onClick={closeForm} className="text-white/45 hover:text-white p-1">
                 <X size={20} />
               </button>
             </div>
@@ -221,38 +267,62 @@ export default function BillsPage() {
                   <option value="receivable" className="bg-[#1a1a2e]">A receber</option>
                 </select>
               </div>
-              <div className="flex items-end pb-1">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={recurrent}
-                    onChange={(e) => setRecurrent(e.target.checked)}
-                    className="w-5 h-5 rounded accent-[#6366F1]"
-                  />
-                  <span className="text-sm text-white/60 flex items-center gap-1">
-                    <RefreshCw size={14} className="text-white/45" />
-                    Recorrente
-                  </span>
-                </label>
+              <div>
+                <label className="label-upper block mb-1">Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as "pending" | "paid" | "overdue")}
+                  className="w-full glass-input px-3 py-3 text-base text-white"
+                >
+                  <option value="pending" className="bg-[#1a1a2e]">Pendente</option>
+                  <option value="paid" className="bg-[#1a1a2e]">Paga</option>
+                  <option value="overdue" className="bg-[#1a1a2e]">Atrasada</option>
+                </select>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={recurrent}
+                onChange={(e) => setRecurrent(e.target.checked)}
+                className="w-5 h-5 rounded accent-[#6366F1]"
+                id="recurrent"
+              />
+              <label htmlFor="recurrent" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
+                <RefreshCw size={14} className="text-white/45" />
+                Recorrente
+              </label>
             </div>
             <div>
               <label className="label-upper block mb-1">Observacoes</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                rows={3}
+                rows={2}
                 className="w-full glass-input px-3 py-3 text-base text-white resize-none"
                 placeholder="Opcional..."
               />
             </div>
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
-            >
-              {saving ? "Salvando..." : "Adicionar conta"}
-            </button>
+
+            <div className="flex gap-3">
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={saving}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={saving}
+                className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {saving ? "Salvando..." : editingId ? "Salvar alterações" : "Adicionar conta"}
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -286,17 +356,21 @@ export default function BillsPage() {
               key={b.id}
               className="flex items-center justify-between py-3 glass-divider"
             >
-              <div className="min-w-0 flex-1">
+              <button
+                onClick={() => openEdit(b)}
+                className="min-w-0 flex-1 text-left"
+              >
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm truncate">{b.description}</p>
                   {b.recurrent && (
                     <RefreshCw size={12} className="text-white/30 flex-shrink-0" />
                   )}
+                  <Pencil size={12} className="text-white/20 flex-shrink-0" />
                 </div>
                 <p className="text-xs text-white/30 mt-0.5">
                   Vence em {formatDate(b.due_date)} · {b.type === "payable" ? "A pagar" : "A receber"}
                 </p>
-              </div>
+              </button>
               <div className="flex items-center gap-3 flex-shrink-0 ml-3">
                 <div className="text-right">
                   <span className={`font-bold text-sm ${b.type === "receivable" ? "text-green-400" : "text-white"}`}>
