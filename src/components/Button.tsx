@@ -15,11 +15,11 @@ export default function Button({
   disabled,
   ...props
 }: ButtonProps) {
-  const base = "px-6 py-3 rounded-xl font-medium text-sm transition-colors disabled:opacity-50";
+  const base = "px-6 py-3 rounded-xl font-medium text-sm transition-all disabled:opacity-50";
   const variants = {
-    primary: "bg-primary hover:bg-primary-dark text-white",
-    secondary: "bg-dark-700 hover:bg-dark-600 text-white",
-    ghost: "text-gray-400 hover:text-white",
+    primary: "bg-[#6366F1] hover:bg-[#4F46E5] text-white",
+    secondary: "glass-btn text-white",
+    ghost: "text-white/45 hover:text-white",
   };
 
   return (

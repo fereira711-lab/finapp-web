@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { getCategoryConfig, CATEGORY_CONFIG } from "@/lib/categories";
+import { getCategoryConfig } from "@/lib/categories";
 import type { Transaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
@@ -56,8 +56,6 @@ export default function DashboardPage() {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
-
-      // 6 months ago for bar chart
       const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString();
 
       const [accountsRes, monthTxRes, billsRes, allTxRes, recentRes] = await Promise.all([
@@ -87,7 +85,6 @@ export default function DashboardPage() {
           .limit(5),
       ]);
 
-      // Summary cards
       const balance = (accountsRes.data || []).reduce((s, a) => s + a.balance, 0);
       const income = (monthTxRes.data || [])
         .filter((t) => t.type === "income" || t.amount > 0)
@@ -98,7 +95,6 @@ export default function DashboardPage() {
       const pendingBills = (billsRes.data || []).reduce((s, b) => s + b.amount, 0);
       setSummary({ balance, income, expenses, pendingBills });
 
-      // Category pie chart (current month expenses)
       const catMap: Record<string, number> = {};
       (monthTxRes.data || [])
         .filter((t) => t.type === "expense" || t.amount < 0)
@@ -107,7 +103,6 @@ export default function DashboardPage() {
           catMap[cat] = (catMap[cat] || 0) + Math.abs(t.amount);
         });
 
-      // Also check allTxRes for current month if monthTxRes has no category
       const pieData = Object.entries(catMap)
         .map(([key, value]) => ({
           name: getCategoryConfig(key).label,
@@ -117,11 +112,9 @@ export default function DashboardPage() {
         .sort((a, b) => b.value - a.value);
       setCategoryData(pieData);
 
-      // Monthly bar chart
       const monthMap: Record<string, { receitas: number; despesas: number }> = {};
       const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-      // Initialize last 6 months
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -156,49 +149,55 @@ export default function DashboardPage() {
     load();
   }, []);
 
+  const tooltipStyle = {
+    background: "rgba(0,0,0,0.7)",
+    backdropFilter: "blur(10px)",
+    border: "1px solid rgba(255,255,255,0.15)",
+    borderRadius: "12px",
+    color: "#fff",
+  };
+
   return (
     <AppShell>
-      <h1 className="hidden md:block text-2xl font-bold mb-6">Dashboard</h1>
-
       {loading ? (
-        <div className="text-gray-400">Carregando...</div>
+        <div className="text-white/45">Carregando...</div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <Card
               title="Saldo Total"
               value={formatCurrency(summary.balance)}
-              icon={<Wallet size={18} />}
+              icon={<Wallet size={16} />}
               color="text-white"
             />
             <Card
-              title="Receitas do Mês"
+              title="Receitas"
               value={formatCurrency(summary.income)}
-              icon={<TrendingUp size={18} />}
+              icon={<TrendingUp size={16} />}
               color="text-green-400"
             />
             <Card
-              title="Gastos do Mês"
+              title="Gastos"
               value={formatCurrency(summary.expenses)}
-              icon={<TrendingDown size={18} />}
+              icon={<TrendingDown size={16} />}
               color="text-red-400"
             />
             <Card
-              title="Contas Pendentes"
+              title="Pendentes"
               value={formatCurrency(summary.pendingBills)}
-              icon={<Clock size={18} />}
+              icon={<Clock size={16} />}
               color="text-yellow-400"
             />
           </div>
 
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Charts */}
+          <div className="space-y-4">
             {/* Donut Chart */}
-            <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700">
-              <h2 className="text-sm text-gray-400 mb-4">Gastos por Categoria</h2>
+            <div className="glass-divider pb-5">
+              <h2 className="label-upper mb-3">Gastos por Categoria</h2>
               {categoryData.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-8">
+                <p className="text-white/30 text-sm text-center py-6">
                   Sem despesas este mês
                 </p>
               ) : (
@@ -220,12 +219,7 @@ export default function DashboardPage() {
                       </Pie>
                       <Tooltip
                         formatter={(value) => formatCurrency(Number(value))}
-                        contentStyle={{
-                          background: "#1E293B",
-                          border: "1px solid #334155",
-                          borderRadius: "8px",
-                          color: "#fff",
-                        }}
+                        contentStyle={tooltipStyle}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -234,12 +228,12 @@ export default function DashboardPage() {
                       <div key={i} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                             style={{ backgroundColor: item.color }}
                           />
-                          <span className="text-gray-300 text-xs sm:text-sm">{item.name}</span>
+                          <span className="text-white/60 text-xs">{item.name}</span>
                         </div>
-                        <span className="text-gray-400 text-xs sm:text-sm">{formatCurrency(item.value)}</span>
+                        <span className="text-white/45 text-xs">{formatCurrency(item.value)}</span>
                       </div>
                     ))}
                   </div>
@@ -248,34 +242,29 @@ export default function DashboardPage() {
             </div>
 
             {/* Bar Chart */}
-            <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700">
-              <h2 className="text-sm text-gray-400 mb-4">Receitas vs Despesas (6 meses)</h2>
+            <div>
+              <h2 className="label-upper mb-3">Receitas vs Despesas</h2>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={monthlyData} margin={{ left: -10, right: 5 }}>
                   <XAxis
                     dataKey="name"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fill: "#94A3B8", fontSize: 11 }}
+                    tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
                   />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fill: "#94A3B8", fontSize: 11 }}
+                    tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
                     tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
                     width={40}
                   />
                   <Tooltip
                     formatter={(value) => formatCurrency(Number(value))}
-                    contentStyle={{
-                      background: "#1E293B",
-                      border: "1px solid #334155",
-                      borderRadius: "8px",
-                      color: "#fff",
-                    }}
+                    contentStyle={tooltipStyle}
                   />
                   <Legend
-                    wrapperStyle={{ color: "#94A3B8", fontSize: 11 }}
+                    wrapperStyle={{ color: "rgba(255,255,255,0.45)", fontSize: 11 }}
                   />
                   <Bar dataKey="receitas" fill="#10B981" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="despesas" fill="#EF4444" radius={[4, 4, 0, 0]} />
@@ -285,10 +274,10 @@ export default function DashboardPage() {
           </div>
 
           {/* Recent Transactions */}
-          <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700">
-            <h2 className="text-sm text-gray-400 mb-4">Últimas Transações</h2>
+          <div className="glass-divider pt-4">
+            <h2 className="label-upper mb-3">Últimas Transações</h2>
             {recentTx.length === 0 ? (
-              <p className="text-gray-500 text-sm">Nenhuma transação encontrada.</p>
+              <p className="text-white/30 text-sm">Nenhuma transação encontrada.</p>
             ) : (
               <div className="space-y-3">
                 {recentTx.map((t) => {
@@ -301,14 +290,14 @@ export default function DashboardPage() {
                     >
                       <div className="flex items-center gap-3">
                         <div
-                          className="w-9 h-9 rounded-lg flex items-center justify-center"
+                          className="w-9 h-9 rounded-xl flex items-center justify-center"
                           style={{ backgroundColor: cat.color + "20" }}
                         >
                           <Icon size={16} style={{ color: cat.color }} />
                         </div>
                         <div>
                           <p className="text-sm font-medium">{t.description}</p>
-                          <p className="text-xs text-gray-500">{formatDate(t.date)}</p>
+                          <p className="text-xs text-white/30">{formatDate(t.date)}</p>
                         </div>
                       </div>
                       <span

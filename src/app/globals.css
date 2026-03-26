@@ -2,20 +2,118 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-gradient: linear-gradient(145deg, #1a1a2e, #16213e, #0f3460);
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-border-top: rgba(255, 255, 255, 0.52);
+  --glass-divider: rgba(255, 255, 255, 0.08);
+  --glass-blur: 20px;
+  --glass-radius: 24px;
+  --text-secondary: rgba(255, 255, 255, 0.45);
+}
+
 html, body {
-  background-color: #0F172A;
+  background: var(--bg-gradient);
+  background-attachment: fixed;
   color: white;
+  min-height: 100vh;
+}
+
+/* Glassmorphism utility classes */
+@layer components {
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    border-top: 1.5px solid var(--glass-border-top);
+    border-radius: var(--glass-radius);
+  }
+
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+  }
+
+  .glass-nav {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-top: 1px solid var(--glass-border);
+  }
+
+  .glass-header {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-bottom: 1px solid var(--glass-border);
+  }
+
+  .glass-input {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+  }
+
+  .glass-input:focus {
+    border-color: #6366F1;
+    outline: none;
+  }
+
+  .glass-divider {
+    border-bottom: 1px solid var(--glass-divider);
+  }
+
+  .label-upper {
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .text-secondary {
+    color: var(--text-secondary);
+  }
+
+  .value-large {
+    font-weight: 700;
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .glass-btn {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    transition: all 0.2s;
+  }
+
+  .glass-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .glass-btn-active {
+    background: rgba(99, 102, 241, 0.3);
+    border-color: rgba(99, 102, 241, 0.5);
+  }
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: #1E293B;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #475569;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
 }
 
 /* Safe area for devices with home indicator (iPhone X+) */
@@ -28,4 +126,11 @@ html, body {
   select, input, textarea {
     font-size: 16px !important;
   }
+}
+
+/* Background image support */
+.bg-custom-image {
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
 }

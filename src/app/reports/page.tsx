@@ -82,7 +82,6 @@ export default function ReportsPage() {
       setCurrentMonth(cur);
       setPrevMonth(prev);
 
-      // Top 5 categories by expense this month
       const catMap: Record<string, number> = {};
       (curRes.data || [])
         .filter((t) => t.type === "expense" || t.amount < 0)
@@ -131,23 +130,18 @@ export default function ReportsPage() {
 
   return (
     <AppShell>
-      <h1 className="text-2xl font-bold mb-6">Relatórios</h1>
-
       {loading ? (
-        <p className="text-gray-400">Carregando...</p>
+        <p className="text-white/45">Carregando...</p>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Monthly Summary */}
-          <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700">
-            <h2 className="text-sm text-gray-400 mb-4">
-              Resumo de {currentMonthName}
-            </h2>
+          <div className="glass-divider pb-5">
+            <h2 className="label-upper mb-4">Resumo de {currentMonthName}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Receitas */}
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <TrendingUp size={16} className="text-green-400" />
-                  <span className="text-sm text-gray-400">Receitas</span>
+                  <span className="label-upper">Receitas</span>
                 </div>
                 <p className="text-xl font-bold text-green-400">
                   {formatCurrency(currentMonth.receitas)}
@@ -161,21 +155,19 @@ export default function ReportsPage() {
                   <span className={receitaVar.positive ? "text-green-400" : "text-red-400"}>
                     {receitaVar.value}
                   </span>
-                  <span className="text-gray-500">vs {prevMonthName}</span>
+                  <span className="text-white/30">vs {prevMonthName}</span>
                 </div>
               </div>
 
-              {/* Despesas */}
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <TrendingDown size={16} className="text-red-400" />
-                  <span className="text-sm text-gray-400">Despesas</span>
+                  <span className="label-upper">Despesas</span>
                 </div>
                 <p className="text-xl font-bold text-red-400">
                   {formatCurrency(currentMonth.despesas)}
                 </p>
                 <div className="flex items-center gap-1 text-xs">
-                  {/* For expenses, increase is bad */}
                   {!despesaVar.positive ? (
                     <ArrowDownRight size={14} className="text-green-400" />
                   ) : (
@@ -184,14 +176,13 @@ export default function ReportsPage() {
                   <span className={!despesaVar.positive ? "text-green-400" : "text-red-400"}>
                     {despesaVar.value}
                   </span>
-                  <span className="text-gray-500">vs {prevMonthName}</span>
+                  <span className="text-white/30">vs {prevMonthName}</span>
                 </div>
               </div>
 
-              {/* Saldo */}
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">Saldo do Mês</span>
+                  <span className="label-upper">Saldo do Mês</span>
                 </div>
                 <p
                   className={`text-xl font-bold ${
@@ -209,17 +200,17 @@ export default function ReportsPage() {
                   <span className={saldoVar.positive ? "text-green-400" : "text-red-400"}>
                     {saldoVar.value}
                   </span>
-                  <span className="text-gray-500">vs {prevMonthName}</span>
+                  <span className="text-white/30">vs {prevMonthName}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Top Categories */}
-          <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700">
-            <h2 className="text-sm text-gray-400 mb-4">Top 5 Categorias de Gastos</h2>
+          <div className="glass-divider pb-5">
+            <h2 className="label-upper mb-4">Top 5 Categorias de Gastos</h2>
             {topCategories.length === 0 ? (
-              <p className="text-gray-500 text-sm">Sem despesas neste mês.</p>
+              <p className="text-white/30 text-sm">Sem despesas neste mês.</p>
             ) : (
               <div className="space-y-4">
                 {topCategories.map((cat) => {
@@ -230,7 +221,7 @@ export default function ReportsPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center"
+                            className="w-8 h-8 rounded-xl flex items-center justify-center"
                             style={{ backgroundColor: cat.color + "20" }}
                           >
                             <Icon size={14} style={{ color: cat.color }} />
@@ -241,10 +232,10 @@ export default function ReportsPage() {
                           <span className="text-sm font-bold text-white">
                             {formatCurrency(cat.total)}
                           </span>
-                          <span className="text-xs text-gray-400 ml-2">{cat.percent}%</span>
+                          <span className="text-xs text-white/45 ml-2">{cat.percent}%</span>
                         </div>
                       </div>
-                      <div className="w-full h-2 bg-dark-700 rounded-full overflow-hidden">
+                      <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all"
                           style={{
@@ -261,28 +252,28 @@ export default function ReportsPage() {
           </div>
 
           {/* Previous Month Comparison */}
-          <div className="bg-dark-800 rounded-2xl p-5 border border-dark-700">
-            <h2 className="text-sm text-gray-400 mb-4">
-              Comparativo: {currentMonthName} vs {prevMonthName}
+          <div>
+            <h2 className="label-upper mb-4">
+              {currentMonthName} vs {prevMonthName}
             </h2>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Receitas</p>
-                <p className="text-sm text-gray-400">{formatCurrency(prevMonth.receitas)}</p>
+                <p className="label-upper mb-1">Receitas</p>
+                <p className="text-sm text-white/30">{formatCurrency(prevMonth.receitas)}</p>
                 <p className="text-sm font-bold text-green-400">
                   {formatCurrency(currentMonth.receitas)}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Despesas</p>
-                <p className="text-sm text-gray-400">{formatCurrency(prevMonth.despesas)}</p>
+                <p className="label-upper mb-1">Despesas</p>
+                <p className="text-sm text-white/30">{formatCurrency(prevMonth.despesas)}</p>
                 <p className="text-sm font-bold text-red-400">
                   {formatCurrency(currentMonth.despesas)}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Saldo</p>
-                <p className="text-sm text-gray-400">{formatCurrency(prevMonth.saldo)}</p>
+                <p className="label-upper mb-1">Saldo</p>
+                <p className="text-sm text-white/30">{formatCurrency(prevMonth.saldo)}</p>
                 <p
                   className={`text-sm font-bold ${
                     currentMonth.saldo >= 0 ? "text-green-400" : "text-red-400"
@@ -292,8 +283,8 @@ export default function ReportsPage() {
                 </p>
               </div>
             </div>
-            <div className="flex justify-center gap-4 mt-3 text-xs text-gray-500">
-              <span className="text-gray-400">{prevMonthName}</span>
+            <div className="flex justify-center gap-4 mt-3 text-xs text-white/30">
+              <span className="text-white/45">{prevMonthName}</span>
               <span>→</span>
               <span className="text-white font-medium">{currentMonthName}</span>
             </div>

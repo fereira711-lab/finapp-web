@@ -57,7 +57,6 @@ export default function BillsPage() {
 
     let result = data || [];
 
-    // Marca automaticamente atrasadas
     const today = new Date().toISOString().split("T")[0];
     const toUpdate = result.filter(
       (b) => b.status === "pending" && b.due_date < today
@@ -138,56 +137,56 @@ export default function BillsPage() {
 
   return (
     <AppShell>
-      <div className="flex items-center justify-between mb-4 md:mb-6">
-        <h1 className="hidden md:block text-2xl font-bold">Contas</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="label-upper">Gerenciar Contas</h2>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white text-sm px-4 py-2.5 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs uppercase tracking-wider px-4 py-2.5 rounded-xl transition-colors"
         >
           <Plus size={16} />
-          Nova Conta
+          Nova
         </button>
       </div>
 
       {/* Resumo */}
-      <div className="grid grid-cols-2 gap-3 mb-4 md:mb-6">
-        <div className="bg-dark-800 rounded-xl p-3 md:p-4 border border-dark-700">
-          <p className="text-xs text-gray-400 mb-1">Pendente a pagar</p>
-          <p className="text-lg md:text-xl font-bold text-red-400">{formatCurrency(totalPayable)}</p>
+      <div className="grid grid-cols-2 gap-3 mb-4 glass-divider pb-4">
+        <div className="glass-card p-3">
+          <p className="label-upper mb-1">A Pagar</p>
+          <p className="text-lg font-bold text-red-400">{formatCurrency(totalPayable)}</p>
         </div>
-        <div className="bg-dark-800 rounded-xl p-3 md:p-4 border border-dark-700">
-          <p className="text-xs text-gray-400 mb-1">Pendente a receber</p>
-          <p className="text-lg md:text-xl font-bold text-green-400">{formatCurrency(totalReceivable)}</p>
+        <div className="glass-card p-3">
+          <p className="label-upper mb-1">A Receber</p>
+          <p className="text-lg font-bold text-green-400">{formatCurrency(totalReceivable)}</p>
         </div>
       </div>
 
       {/* Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowForm(false)} />
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowForm(false)} />
           <form
             onSubmit={handleAdd}
-            className="relative bg-dark-800 rounded-t-2xl md:rounded-2xl p-5 md:p-6 border border-dark-700 w-full max-w-md space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto"
+            className="relative glass rounded-t-3xl rounded-b-none p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold">Nova conta</h2>
-              <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white p-1">
+              <button type="button" onClick={() => setShowForm(false)} className="text-white/45 hover:text-white p-1">
                 <X size={20} />
               </button>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Descricao</label>
+              <label className="label-upper block mb-1">Descricao</label>
               <input
                 required
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
-                className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-3 text-base md:text-sm text-white focus:outline-none focus:border-primary"
+                className="w-full glass-input px-3 py-3 text-base text-white"
                 placeholder="Ex: Aluguel, Internet..."
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Valor</label>
+                <label className="label-upper block mb-1">Valor</label>
                 <input
                   required
                   type="number"
@@ -195,31 +194,31 @@ export default function BillsPage() {
                   min="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-3 text-base md:text-sm text-white focus:outline-none focus:border-primary"
+                  className="w-full glass-input px-3 py-3 text-base text-white"
                   placeholder="0,00"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Vencimento</label>
+                <label className="label-upper block mb-1">Vencimento</label>
                 <input
                   required
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-3 text-base md:text-sm text-white focus:outline-none focus:border-primary"
+                  className="w-full glass-input px-3 py-3 text-base text-white"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Tipo</label>
+                <label className="label-upper block mb-1">Tipo</label>
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as "payable" | "receivable")}
-                  className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-3 text-base md:text-sm text-white focus:outline-none focus:border-primary"
+                  className="w-full glass-input px-3 py-3 text-base text-white"
                 >
-                  <option value="payable">A pagar</option>
-                  <option value="receivable">A receber</option>
+                  <option value="payable" className="bg-[#1a1a2e]">A pagar</option>
+                  <option value="receivable" className="bg-[#1a1a2e]">A receber</option>
                 </select>
               </div>
               <div className="flex items-end pb-1">
@@ -228,29 +227,29 @@ export default function BillsPage() {
                     type="checkbox"
                     checked={recurrent}
                     onChange={(e) => setRecurrent(e.target.checked)}
-                    className="w-5 h-5 rounded border-dark-700 bg-dark-900 text-primary focus:ring-primary"
+                    className="w-5 h-5 rounded accent-[#6366F1]"
                   />
-                  <span className="text-sm text-gray-300 flex items-center gap-1">
-                    <RefreshCw size={14} className="text-gray-400" />
+                  <span className="text-sm text-white/60 flex items-center gap-1">
+                    <RefreshCw size={14} className="text-white/45" />
                     Recorrente
                   </span>
                 </label>
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Observacoes</label>
+              <label className="label-upper block mb-1">Observacoes</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
-                className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-3 text-base md:text-sm text-white focus:outline-none focus:border-primary resize-none"
+                className="w-full glass-input px-3 py-3 text-base text-white resize-none"
                 placeholder="Opcional..."
               />
             </div>
             <button
               type="submit"
               disabled={saving}
-              className="w-full bg-primary hover:bg-primary-dark text-white text-sm font-medium py-3 rounded-lg transition-colors disabled:opacity-50"
+              className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
             >
               {saving ? "Salvando..." : "Adicionar conta"}
             </button>
@@ -259,15 +258,15 @@ export default function BillsPage() {
       )}
 
       {/* Filtros */}
-      <div className="flex flex-wrap gap-2 mb-4 overflow-x-auto pb-1">
+      <div className="flex flex-wrap gap-2 mb-4">
         {FILTERS.map((f) => (
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
-            className={`px-4 py-2.5 rounded-full text-sm whitespace-nowrap transition-colors ${
+            className={`px-3 py-2 rounded-xl text-xs uppercase tracking-wider whitespace-nowrap transition-all ${
               filter === f.key
-                ? "bg-primary text-white"
-                : "bg-dark-800 text-gray-400 active:text-white"
+                ? "glass-btn-active text-white"
+                : "glass-btn text-white/45"
             }`}
           >
             {f.label}
@@ -277,36 +276,33 @@ export default function BillsPage() {
 
       {/* Lista */}
       {loading ? (
-        <p className="text-gray-400">Carregando...</p>
+        <p className="text-white/45">Carregando...</p>
       ) : filtered.length === 0 ? (
-        <p className="text-gray-500">Nenhuma conta encontrada.</p>
+        <p className="text-white/30">Nenhuma conta encontrada.</p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-1">
           {filtered.map((b) => (
             <div
               key={b.id}
-              className="bg-dark-800 rounded-xl p-4 flex items-center justify-between border border-dark-700"
+              className="flex items-center justify-between py-3 glass-divider"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="font-medium truncate">{b.description}</p>
+                  <p className="font-medium text-sm truncate">{b.description}</p>
                   {b.recurrent && (
-                    <RefreshCw size={12} className="text-gray-500 flex-shrink-0" />
+                    <RefreshCw size={12} className="text-white/30 flex-shrink-0" />
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Vence em {formatDate(b.due_date)} ·{" "}
-                  {b.type === "payable" ? "A pagar" : "A receber"}
+                <p className="text-xs text-white/30 mt-0.5">
+                  Vence em {formatDate(b.due_date)} · {b.type === "payable" ? "A pagar" : "A receber"}
                 </p>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0 ml-3">
                 <div className="text-right">
-                  <span className={`font-bold ${b.type === "receivable" ? "text-green-400" : "text-white"}`}>
+                  <span className={`font-bold text-sm ${b.type === "receivable" ? "text-green-400" : "text-white"}`}>
                     {b.type === "receivable" ? "+" : "-"}{formatCurrency(b.amount)}
                   </span>
-                  <span
-                    className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[b.status]}`}
-                  >
+                  <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[b.status]}`}>
                     {statusLabel[b.status]}
                   </span>
                 </div>
@@ -315,7 +311,7 @@ export default function BillsPage() {
                     onClick={() => markAsPaid(b.id)}
                     disabled={markingId === b.id}
                     title="Marcar como pago"
-                    className="p-2 rounded-lg bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
+                    className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
                   >
                     <Check size={16} />
                   </button>

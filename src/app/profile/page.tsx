@@ -8,7 +8,7 @@ import type { Account, Profile } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Button from "@/components/Button";
 import Input from "@/components/Input";
-import { Landmark, LogOut } from "lucide-react";
+import { Landmark, LogOut, Palette } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
@@ -61,18 +61,17 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <AppShell>
-        <p className="text-gray-400">Carregando...</p>
+        <p className="text-white/45">Carregando...</p>
       </AppShell>
     );
   }
 
   return (
     <AppShell>
-      <h1 className="hidden md:block text-2xl font-bold mb-6">Perfil</h1>
-
-      <div className="space-y-6">
-        <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700 space-y-4">
-          <h2 className="text-lg font-semibold">Dados pessoais</h2>
+      <div className="space-y-5">
+        {/* Dados pessoais */}
+        <div className="glass-divider pb-5 space-y-4">
+          <h2 className="label-upper">Dados Pessoais</h2>
           <Input
             label="Nome"
             value={name}
@@ -83,29 +82,41 @@ export default function ProfilePage() {
           </Button>
         </div>
 
-        <div className="bg-dark-800 rounded-2xl p-4 md:p-5 border border-dark-700">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-            <h2 className="text-lg font-semibold">Contas bancárias</h2>
+        {/* Aparência */}
+        <div className="glass-divider pb-5">
+          <h2 className="label-upper mb-3">Personalização</h2>
+          <Link href="/settings/appearance">
+            <button className="glass-btn w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:text-white">
+              <Palette size={18} className="text-[#6366F1]" />
+              <span>Configurar Aparência</span>
+            </button>
+          </Link>
+        </div>
+
+        {/* Contas bancárias */}
+        <div className="glass-divider pb-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="label-upper">Contas Bancárias</h2>
             <Link href="/connect-bank">
               <Button variant="secondary" className="!py-2 !px-4 text-xs flex items-center gap-2">
                 <Landmark size={14} />
-                Conectar banco
+                Conectar
               </Button>
             </Link>
           </div>
 
           {accounts.length === 0 ? (
-            <p className="text-gray-500 text-sm">Nenhuma conta conectada.</p>
+            <p className="text-white/30 text-sm">Nenhuma conta conectada.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {accounts.map((a) => (
                 <div
                   key={a.id}
-                  className="flex items-center justify-between bg-dark-700 rounded-xl p-3"
+                  className="flex items-center justify-between glass-card p-3"
                 >
                   <div>
                     <p className="font-medium text-sm">{a.name}</p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-white/30">
                       {a.bank_name} • {a.account_type}
                     </p>
                   </div>
@@ -118,6 +129,7 @@ export default function ProfilePage() {
           )}
         </div>
 
+        {/* Logout */}
         <Button variant="ghost" onClick={handleLogout} className="flex items-center gap-2 text-red-400">
           <LogOut size={16} />
           Sair da conta
