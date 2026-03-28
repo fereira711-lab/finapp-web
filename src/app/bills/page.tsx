@@ -1,20 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Bill } from "@/lib/types";
 import AppShell from "@/components/AppShell";
-import { Plus, Check, RefreshCw, X, Pencil, Trash2 } from "lucide-react";
+import {
+  Plus,
+  Check,
+  RefreshCw,
+  X,
+  Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  Clock,
+} from "lucide-react";
 
-type FilterKey = "Todas" | "payable" | "receivable" | "pending" | "paid";
+type StatusFilter = "all" | "pending" | "paid" | "overdue";
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "Todas", label: "Todas" },
-  { key: "payable", label: "A pagar" },
-  { key: "receivable", label: "A receber" },
+const MONTH_NAMES = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
+  { key: "all", label: "Todas" },
   { key: "pending", label: "Pendentes" },
   { key: "paid", label: "Pagas" },
+  { key: "overdue", label: "Atrasadas" },
 ];
 
 const statusColor: Record<string, string> = {
@@ -29,14 +46,31 @@ const statusLabel: Record<string, string> = {
   overdue: "Atrasada",
 };
 
+function getNextDueDate(currentDue: string): string {
+  const d = new Date(currentDue + "T12:00:00");
+  const day = d.getDate();
+  const nextMonth = d.getMonth() + 1;
+  const year = d.getFullYear();
+  // Handle month overflow and day clamping (e.g. Jan 31 -> Feb 28)
+  const next = new Date(year, nextMonth, 1);
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, lastDay));
+  return next.toISOString().split("T")[0];
+}
+
 export default function BillsPage() {
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
+
   const [bills, setBills] = useState<Bill[]>([]);
-  const [filter, setFilter] = useState<FilterKey>("Todas");
+  const [filter, setFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
@@ -46,15 +80,21 @@ export default function BillsPage() {
   const [recurrent, setRecurrent] = useState(false);
   const [notes, setNotes] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    const startOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-01`;
+    const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    const endOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
     const { data } = await supabase
       .from("bills")
       .select("*")
       .eq("user_id", user.id)
+      .gte("due_date", startOfMonth)
+      .lte("due_date", endOfMonth)
       .order("due_date", { ascending: true });
 
     let result = data || [];
@@ -75,23 +115,54 @@ export default function BillsPage() {
 
     setBills(result);
     setLoading(false);
+  }, [selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    setLoading(true);
+    load();
+  }, [load]);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
   }
 
-  useEffect(() => { load(); }, []);
+  function prevMonth() {
+    if (selectedMonth === 0) {
+      setSelectedMonth(11);
+      setSelectedYear((y) => y - 1);
+    } else {
+      setSelectedMonth((m) => m - 1);
+    }
+  }
 
-  const filtered = bills.filter((b) => {
-    if (filter === "Todas") return true;
-    if (filter === "payable" || filter === "receivable") return b.type === filter;
+  function nextMonth() {
+    if (selectedMonth === 11) {
+      setSelectedMonth(0);
+      setSelectedYear((y) => y + 1);
+    } else {
+      setSelectedMonth((m) => m + 1);
+    }
+  }
+
+  // --- Month filtering ---
+  const monthBills = bills;
+
+  const filtered = monthBills.filter((b) => {
+    if (filter === "all") return true;
     return b.status === filter;
   });
 
-  const pendingBills = bills.filter((b) => b.status === "pending" || b.status === "overdue");
-  const totalPayable = pendingBills
-    .filter((b) => b.type === "payable")
+  const totalPayable = monthBills
+    .filter((b) => b.type === "payable" && b.status !== "paid")
     .reduce((s, b) => s + b.amount, 0);
-  const totalReceivable = pendingBills
-    .filter((b) => b.type === "receivable")
+  const totalReceivable = monthBills
+    .filter((b) => b.type === "receivable" && b.status !== "paid")
     .reduce((s, b) => s + b.amount, 0);
+  const balance = totalReceivable - totalPayable;
+  const pendingCount = monthBills.filter(
+    (b) => b.status === "pending" || b.status === "overdue"
+  ).length;
 
   function resetForm() {
     setDesc("");
@@ -174,7 +245,31 @@ export default function BillsPage() {
   async function markAsPaid(id: string) {
     setMarkingId(id);
     const supabase = createClient();
+    const bill = bills.find((b) => b.id === id);
+    if (!bill) { setMarkingId(null); return; }
+
     await supabase.from("bills").update({ status: "paid" }).eq("id", id);
+
+    // Recurrence: create next month's bill
+    if (bill.recurrent) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const nextDue = getNextDueDate(bill.due_date);
+        await supabase.from("bills").insert({
+          user_id: user.id,
+          description: bill.description,
+          amount: bill.amount,
+          due_date: nextDue,
+          type: bill.type,
+          status: "pending",
+          recurrent: true,
+          recurrence_day: bill.recurrence_day,
+          notes: bill.notes,
+        });
+        showToast(`Próxima parcela criada para ${formatDate(nextDue)}`);
+      }
+    }
+
     setBills((prev) =>
       prev.map((b) => (b.id === id ? { ...b, status: "paid" as const } : b))
     );
@@ -183,6 +278,14 @@ export default function BillsPage() {
 
   return (
     <AppShell>
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] glass px-5 py-3 text-sm text-green-400 flex items-center gap-2 animate-fade-in">
+          <RefreshCw size={14} />
+          {toast}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="label-upper">Gerenciar Contas</h2>
         <button
@@ -194,15 +297,50 @@ export default function BillsPage() {
         </button>
       </div>
 
-      {/* Resumo */}
+      {/* Carrossel de mês */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={prevMonth} className="p-2 rounded-xl glass-btn text-white/60 hover:text-white">
+          <ChevronLeft size={20} />
+        </button>
+        <span className="text-sm font-semibold tracking-wide">
+          {MONTH_NAMES[selectedMonth]} {selectedYear}
+        </span>
+        <button onClick={nextMonth} className="p-2 rounded-xl glass-btn text-white/60 hover:text-white">
+          <ChevronRight size={20} />
+        </button>
+      </div>
+
+      {/* Resumo do mês */}
       <div className="grid grid-cols-2 gap-3 mb-4 glass-divider pb-4">
         <div className="glass-card p-3">
-          <p className="label-upper mb-1">A Pagar</p>
+          <div className="flex items-center gap-1.5 mb-1">
+            <TrendingDown size={12} className="text-red-400" />
+            <p className="label-upper">A Pagar</p>
+          </div>
           <p className="text-lg font-bold text-red-400">{formatCurrency(totalPayable)}</p>
         </div>
         <div className="glass-card p-3">
-          <p className="label-upper mb-1">A Receber</p>
+          <div className="flex items-center gap-1.5 mb-1">
+            <TrendingUp size={12} className="text-green-400" />
+            <p className="label-upper">A Receber</p>
+          </div>
           <p className="text-lg font-bold text-green-400">{formatCurrency(totalReceivable)}</p>
+        </div>
+        <div className="glass-card p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Wallet size={12} className="text-[#6366F1]" />
+            <p className="label-upper">Saldo</p>
+          </div>
+          <p className={`text-lg font-bold ${balance >= 0 ? "text-green-400" : "text-red-400"}`}>
+            {formatCurrency(balance)}
+          </p>
+        </div>
+        <div className="glass-card p-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Clock size={12} className="text-yellow-400" />
+            <p className="label-upper">Pendentes</p>
+          </div>
+          <p className="text-lg font-bold text-yellow-400">{pendingCount}</p>
         </div>
       </div>
 
@@ -327,9 +465,9 @@ export default function BillsPage() {
         </div>
       )}
 
-      {/* Filtros */}
+      {/* Filtros por status */}
       <div className="flex flex-wrap gap-2 mb-4">
-        {FILTERS.map((f) => (
+        {STATUS_FILTERS.map((f) => (
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
@@ -363,7 +501,10 @@ export default function BillsPage() {
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm truncate">{b.description}</p>
                   {b.recurrent && (
-                    <RefreshCw size={12} className="text-white/30 flex-shrink-0" />
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
+                      <RefreshCw size={10} />
+                      Recorrente
+                    </span>
                   )}
                   <Pencil size={12} className="text-white/20 flex-shrink-0" />
                 </div>
