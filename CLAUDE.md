@@ -53,18 +53,11 @@ ANTHROPIC_API_KEY=sk-ant-...
 ## 7. PENDÊNCIAS
 
 ### 🔧 MELHORIAS
-- Editar conta depois de criada
-- Recorrência automática ao marcar como paga
-- Cartões de crédito em carrossel com visão mensal, parcelas e fatura
+- Metas financeiras por categoria
 - Categorização inteligente de transações com IA
 - Ativar chat IA (adicionar crédito na Anthropic)
-- Adicionar transações manualmente (dinheiro em espécie)
-- Metas financeiras por categoria
-- Exportar relatório em PDF
-- Notificações de vencimento
-- Dark/light mode toggle
-- Sincronização automática via webhook Pluggy
-- Conectar banco real (aguardando Pluggy produção)
+- Cartões de crédito em carrossel (aguardando banco real)
+- Conectar banco real (aguardando Pluggy produção / CNPJ)
 
 ### ✅ CONCLUÍDO
 - Autenticação com Supabase
@@ -76,6 +69,12 @@ ANTHROPIC_API_KEY=sk-ant-...
 - Design mobile com bottom nav bar
 - Deploy na Vercel
 - CLAUDE.md criado
+- Design glassmorphism com personalização (fundo, opacidade, imagem)
+- Notificações de vencimento (badge, alertas no dashboard, destaque na listagem)
+- Recorrência automática com projeção de meses futuros
+- Carrossel de mês na página de contas
+- Webhook Pluggy configurado (5 eventos)
+- Sincronização automática via webhook (aguardando banco real)
 
 ---
 
