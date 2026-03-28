@@ -17,7 +17,6 @@ import {
   Wallet,
   TrendingUp,
   TrendingDown,
-  Clock,
   CalendarClock,
 } from "lucide-react";
 
@@ -170,15 +169,15 @@ export default function BillsPage() {
   });
 
   const totalPayable = bills
-    .filter((b) => b.type === "payable" && b.status !== "paid")
+    .filter((b) => b.type === "payable")
     .reduce((s, b) => s + b.amount, 0);
   const totalReceivable = bills
-    .filter((b) => b.type === "receivable" && b.status !== "paid")
+    .filter((b) => b.type === "receivable")
     .reduce((s, b) => s + b.amount, 0);
   const balance = totalReceivable - totalPayable;
-  const pendingCount = bills.filter(
-    (b) => b.status === "pending" || b.status === "overdue"
-  ).length;
+  const paidCount = bills.filter((b) => b.status === "paid").length;
+  const pendingCount = bills.filter((b) => b.status === "pending").length;
+  const overdueCount = bills.filter((b) => b.status === "overdue").length;
 
   function resetForm() {
     setDesc("");
@@ -338,7 +337,7 @@ export default function BillsPage() {
       </div>
 
       {/* Resumo do mês */}
-      <div className="grid grid-cols-2 gap-3 mb-4 glass-divider pb-4">
+      <div className="grid grid-cols-3 gap-3 mb-2">
         <div className="glass-card p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <TrendingDown size={12} className="text-red-400" />
@@ -356,20 +355,16 @@ export default function BillsPage() {
         <div className="glass-card p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Wallet size={12} className="text-[#6366F1]" />
-            <p className="label-upper">Saldo</p>
+            <p className="label-upper">Saldo Previsto</p>
           </div>
           <p className={`text-lg font-bold ${balance >= 0 ? "text-green-400" : "text-red-400"}`}>
             {formatCurrency(balance)}
           </p>
         </div>
-        <div className="glass-card p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Clock size={12} className="text-yellow-400" />
-            <p className="label-upper">Pendentes</p>
-          </div>
-          <p className="text-lg font-bold text-yellow-400">{pendingCount}</p>
-        </div>
       </div>
+      <p className="text-[11px] text-white/30 mb-4 glass-divider pb-4">
+        {paidCount} pagas · {pendingCount} pendentes · {overdueCount} atrasadas
+      </p>
 
       {/* Modal Criar/Editar */}
       {showForm && (
