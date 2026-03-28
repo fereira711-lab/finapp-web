@@ -63,6 +63,14 @@ export interface CardTransaction {
   created_at: string;
 }
 
+export interface Goal {
+  id: string;
+  user_id: string;
+  category: string;
+  monthly_limit: number;
+  created_at: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

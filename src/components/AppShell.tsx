@@ -14,6 +14,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/profile": "Perfil",
   "/reports": "Relatórios",
   "/connect-bank": "Conectar Banco",
+  "/goals": "Metas",
 };
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

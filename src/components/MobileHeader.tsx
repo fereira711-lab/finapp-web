@@ -13,6 +13,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/profile": "Perfil",
   "/connect-bank": "Conectar Banco",
   "/settings/appearance": "Aparência",
+  "/goals": "Metas",
 };
 
 export default function MobileHeader() {

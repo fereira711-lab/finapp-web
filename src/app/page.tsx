@@ -9,7 +9,7 @@ import { useBillAlerts } from "@/lib/useBillAlerts";
 import type { Transaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
-import { Wallet, TrendingUp, TrendingDown, Clock, AlertTriangle, CreditCard } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, Clock, AlertTriangle, CreditCard, Target } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
@@ -17,6 +17,7 @@ import {
 
 interface MonthlyData { name: string; receitas: number; despesas: number; }
 interface CategoryData { name: string; value: number; color: string; }
+interface GoalProgress { category: string; label: string; color: string; spent: number; limit: number; pct: number; }
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState({
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
+  const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const alerts = useBillAlerts();
 
@@ -43,7 +45,7 @@ export default function DashboardPage() {
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       const endStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-      const [accountsRes, monthTxRes, billsRes, allTxRes, recentRes, cardTxRes] = await Promise.all([
+      const [accountsRes, monthTxRes, billsRes, allTxRes, recentRes, cardTxRes, goalsRes, cardTxCatRes] = await Promise.all([
         supabase.from("accounts").select("balance").eq("user_id", user.id),
         supabase.from("transactions").select("amount, type, category")
           .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
@@ -53,6 +55,9 @@ export default function DashboardPage() {
         supabase.from("transactions").select("*")
           .eq("user_id", user.id).order("date", { ascending: false }).limit(5),
         supabase.from("card_transactions").select("amount")
+          .eq("user_id", user.id).gte("date", startStr).lte("date", endStr),
+        supabase.from("goals").select("*").eq("user_id", user.id),
+        supabase.from("card_transactions").select("amount, category")
           .eq("user_id", user.id).gte("date", startStr).lte("date", endStr),
       ]);
 
@@ -115,6 +120,32 @@ export default function DashboardPage() {
       setMonthlyData(barData);
 
       setRecentTx((recentRes.data as Transaction[]) || []);
+
+      // Goals progress
+      const goalSpentMap: Record<string, number> = {};
+      (monthTxRes.data || [])
+        .filter((t) => t.type === "expense" || t.amount < 0)
+        .forEach((t) => {
+          const cat = t.category || "outros";
+          goalSpentMap[cat] = (goalSpentMap[cat] || 0) + Math.abs(t.amount);
+        });
+      (cardTxCatRes.data || []).forEach((t) => {
+        const cat = t.category || "outros";
+        goalSpentMap[cat] = (goalSpentMap[cat] || 0) + Math.abs(t.amount);
+      });
+
+      const gProgress: GoalProgress[] = (goalsRes.data || []).map((g) => {
+        const catCfg = getCategoryConfig(g.category);
+        const spent = goalSpentMap[g.category] || 0;
+        const limit = Number(g.monthly_limit);
+        return {
+          category: g.category, label: catCfg.label, color: catCfg.color,
+          spent, limit, pct: limit > 0 ? Math.round((spent / limit) * 100) : 0,
+        };
+      });
+      gProgress.sort((a, b) => b.pct - a.pct);
+      setGoalProgress(gProgress);
+
       setLoading(false);
     }
     load();
@@ -185,6 +216,54 @@ export default function DashboardPage() {
                 </div>
               </div>
             </Link>
+          )}
+
+          {/* Goal Alerts */}
+          {goalProgress.filter((g) => g.pct >= 80).length > 0 && (
+            <Link href="/goals" className="block">
+              <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(234,179,8,0.5)" }}>
+                <div className="flex items-center gap-2">
+                  <Target size={16} className="text-yellow-400" />
+                  <span className="text-sm font-semibold">Metas em alerta</span>
+                </div>
+                <div className="space-y-1">
+                  {goalProgress.filter((g) => g.pct >= 80).map((g) => (
+                    <p key={g.category} className={`text-xs ${g.pct >= 100 ? "text-red-400" : "text-yellow-400"}`}>
+                      {g.label}: {g.pct}% do limite atingido ({formatCurrency(g.spent)} / {formatCurrency(g.limit)})
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </Link>
+          )}
+
+          {/* Goals Widget - Top 3 */}
+          {goalProgress.length > 0 && (
+            <div className="glass-divider pb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="label-upper">Metas do Mes</h2>
+                <Link href="/goals" className="text-[10px] text-[#6366F1] hover:underline">Ver todas</Link>
+              </div>
+              <div className="space-y-3">
+                {goalProgress.slice(0, 3).map((g) => {
+                  const barWidth = Math.min(g.pct, 100);
+                  const barColor = g.pct > 100 ? "bg-red-500" : g.pct >= 70 ? "bg-yellow-500" : "bg-green-500";
+                  const textColor = g.pct > 100 ? "text-red-400" : g.pct >= 70 ? "text-yellow-400" : "text-green-400";
+                  return (
+                    <div key={g.category} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-white/60">{g.label}</span>
+                        <span className={`text-xs font-bold ${textColor}`}>{g.pct}%</span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-white/10">
+                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${barWidth}%` }} />
+                      </div>
+                      <p className="text-[10px] text-white/30">{formatCurrency(g.spent)} / {formatCurrency(g.limit)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           {/* Charts */}

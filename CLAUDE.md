@@ -25,7 +25,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ---
 
 ## 4. BANCO DE DADOS (Supabase)
-- Tabelas: profiles, accounts, transactions, bills, credit_cards, card_transactions
+- Tabelas: profiles, accounts, transactions, bills, credit_cards, card_transactions, goals
 - Coluna appearance (jsonb) em profiles para preferências visuais
 - RLS ativo — cada usuário vê só seus dados
 - Trigger automático cria perfil ao cadastrar
@@ -41,7 +41,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ---
 
 ## 6. PÁGINAS DO APP
-- / — Dashboard com gráficos, alertas de vencimento
+- / — Dashboard com gráficos, alertas de vencimento, widget de metas
 - /transactions — Transações com filtros e categorização
 - /bills — Contas a pagar/receber com carrossel de mês
 - /credit-cards — Cartões de crédito em carrossel com faturas
@@ -49,6 +49,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - /ai — Chat com IA financeira
 - /connect-bank — Widget Pluggy
 - /profile — Perfil + configurações de aparência
+- /goals — Metas financeiras por categoria com barras de progresso
 - /settings/appearance — Glass morphism personalizável
 
 ---
@@ -56,7 +57,6 @@ ANTHROPIC_API_KEY=sk-ant-...
 ## 7. PENDÊNCIAS
 
 ### 🔧 MELHORIAS
-- Metas financeiras por categoria
 - Categorização inteligente de transações com IA
 - Ativar chat IA (adicionar crédito na Anthropic)
 - Conectar banco real (aguardando Pluggy produção / CNPJ)
@@ -82,6 +82,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 - Detalhe da fatura do cartão ao clicar na conta
 - Dashboard com gastos consolidados (débito/PIX + cartões)
 - CLAUDE.md criado e atualizado
+- Metas financeiras por categoria com alertas no dashboard
+- Agrupamento de faturas de cartão na página de contas
 
 ---
 
