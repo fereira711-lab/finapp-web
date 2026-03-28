@@ -1,10 +1,25 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import BottomNav from "./BottomNav";
 import MobileHeader from "./MobileHeader";
 
+const PAGE_TITLES: Record<string, string> = {
+  "/": "Dashboard",
+  "/transactions": "Transações",
+  "/bills": "Contas",
+  "/credit-cards": "Cartões",
+  "/ai": "IA Financeira",
+  "/profile": "Perfil",
+  "/reports": "Relatórios",
+  "/connect-bank": "Conectar Banco",
+};
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const pageTitle = PAGE_TITLES[pathname] || "";
+
   return (
     <div className="min-h-screen">
       <Sidebar />

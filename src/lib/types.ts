@@ -38,6 +38,31 @@ export interface Bill {
   notes: string | null;
 }
 
+export interface CreditCard {
+  id: string;
+  user_id: string;
+  name: string;
+  bank_name: string;
+  credit_limit: number;
+  closing_day: number;
+  due_day: number;
+  color: string;
+  created_at: string;
+}
+
+export interface CardTransaction {
+  id: string;
+  user_id: string;
+  card_id: string;
+  description: string;
+  amount: number;
+  date: string;
+  installments: number;
+  installment_current: number;
+  category: string;
+  created_at: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

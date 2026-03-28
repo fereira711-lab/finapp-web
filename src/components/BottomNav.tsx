@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ArrowLeftRight, Receipt, Bot, User } from "lucide-react";
+import { Home, ArrowLeftRight, Receipt, CreditCard, User } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
   { href: "/bills", label: "Contas", icon: Receipt },
-  { href: "/ai", label: "IA", icon: Bot },
+  { href: "/credit-cards", label: "Cartões", icon: CreditCard },
   { href: "/profile", label: "Perfil", icon: User },
 ];
 

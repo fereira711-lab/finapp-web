@@ -25,7 +25,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ---
 
 ## 4. BANCO DE DADOS (Supabase)
-- Tabelas: `profiles`, `accounts`, `transactions`, `bills`
+- Tabelas: `profiles`, `accounts`, `transactions`, `bills`, `credit_cards`, `card_transactions`
 - RLS ativo — cada usuário vê só seus dados
 - Trigger automático cria perfil ao cadastrar
 
@@ -43,6 +43,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - `/` — Dashboard com gráficos
 - `/transactions` — Transações com filtros
 - `/bills` — Contas a pagar/receber
+- `/credit-cards` — Cartões de crédito com parcelamento
 - `/reports` — Relatórios mensais
 - `/ai` — Chat com IA financeira
 - `/connect-bank` — Widget Pluggy
@@ -56,7 +57,6 @@ ANTHROPIC_API_KEY=sk-ant-...
 - Metas financeiras por categoria
 - Categorização inteligente de transações com IA
 - Ativar chat IA (adicionar crédito na Anthropic)
-- Cartões de crédito em carrossel (aguardando banco real)
 - Conectar banco real (aguardando Pluggy produção / CNPJ)
 
 ### ✅ CONCLUÍDO
@@ -75,6 +75,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - Carrossel de mês na página de contas
 - Webhook Pluggy configurado (5 eventos)
 - Sincronização automática via webhook (aguardando banco real)
+- Cartões de crédito com carrossel, parcelamento e visão de fatura mensal
 
 ---
 
