@@ -44,7 +44,6 @@ export default function CreditCardsPage() {
   const [showCardForm, setShowCardForm] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [cardName, setCardName] = useState("");
-  const [bankName, setBankName] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
   const [closingDay, setClosingDay] = useState("5");
   const [dueDay, setDueDay] = useState("15");
@@ -57,6 +56,7 @@ export default function CreditCardsPage() {
   const [txAmount, setTxAmount] = useState("");
   const [txDate, setTxDate] = useState(new Date().toISOString().split("T")[0]);
   const [txCategory, setTxCategory] = useState("outros");
+  const [txCustomCategory, setTxCustomCategory] = useState("");
   const [txInstallments, setTxInstallments] = useState(false);
   const [txNumInstallments, setTxNumInstallments] = useState("2");
   const [savingTx, setSavingTx] = useState(false);
@@ -147,7 +147,6 @@ export default function CreditCardsPage() {
   // Card form
   function resetCardForm() {
     setCardName("");
-    setBankName("");
     setCreditLimit("");
     setClosingDay("5");
     setDueDay("15");
@@ -163,7 +162,6 @@ export default function CreditCardsPage() {
   function openEditCard(card: CreditCard) {
     setEditingCardId(card.id);
     setCardName(card.name);
-    setBankName(card.bank_name);
     setCreditLimit(String(card.credit_limit));
     setClosingDay(String(card.closing_day));
     setDueDay(String(card.due_day));
@@ -185,7 +183,7 @@ export default function CreditCardsPage() {
 
     const cardData = {
       name: cardName.trim(),
-      bank_name: bankName.trim(),
+      bank_name: cardName.trim(),
       credit_limit: parseFloat(creditLimit) || 0,
       closing_day: parseInt(closingDay),
       due_day: parseInt(dueDay),
@@ -224,6 +222,7 @@ export default function CreditCardsPage() {
     setTxAmount("");
     setTxDate(new Date().toISOString().split("T")[0]);
     setTxCategory("outros");
+    setTxCustomCategory("");
     setTxInstallments(false);
     setTxNumInstallments("2");
   }
@@ -263,7 +262,7 @@ export default function CreditCardsPage() {
         date: d.toISOString().split("T")[0],
         installments: numInst,
         installment_current: i + 1,
-        category: txCategory,
+        category: txCategory === "_custom" ? txCustomCategory.trim().toLowerCase() : txCategory,
       });
     }
 
@@ -365,10 +364,9 @@ export default function CreditCardsPage() {
               </div>
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-1">
-                  <p className="text-white/70 text-xs uppercase tracking-wider">{activeCard?.bank_name}</p>
+                  <p className="text-white font-bold text-lg">{activeCard?.name}</p>
                   <Pencil size={10} className="text-white/30" />
                 </div>
-                <p className="text-white font-bold text-lg mb-4">{activeCard?.name}</p>
                 <div className="mb-3">
                   <p className="text-white/60 text-[10px] uppercase tracking-wider mb-0.5">Fatura atual</p>
                   <p className="text-white font-bold text-2xl">{formatCurrency(totalFatura)}</p>
@@ -529,17 +527,7 @@ export default function CreditCardsPage() {
                 value={cardName}
                 onChange={(e) => setCardName(e.target.value)}
                 className="w-full glass-input px-3 py-3 text-base text-white"
-                placeholder="Ex: Nubank Gold"
-              />
-            </div>
-            <div>
-              <label className="label-upper block mb-1">Banco</label>
-              <input
-                required
-                value={bankName}
-                onChange={(e) => setBankName(e.target.value)}
-                className="w-full glass-input px-3 py-3 text-base text-white"
-                placeholder="Ex: Nubank"
+                placeholder="Ex: Nubank Gold, Inter Black..."
               />
             </div>
             <div>
@@ -676,7 +664,7 @@ export default function CreditCardsPage() {
               <label className="label-upper block mb-1">Categoria</label>
               <select
                 value={txCategory}
-                onChange={(e) => setTxCategory(e.target.value)}
+                onChange={(e) => { setTxCategory(e.target.value); if (e.target.value !== "_custom") setTxCustomCategory(""); }}
                 className="w-full glass-input px-3 py-3 text-base text-white"
               >
                 {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
@@ -684,7 +672,17 @@ export default function CreditCardsPage() {
                     {cfg.label}
                   </option>
                 ))}
+                <option value="_custom" className="bg-[#1a1a2e]">Digitar manualmente...</option>
               </select>
+              {txCategory === "_custom" && (
+                <input
+                  required
+                  value={txCustomCategory}
+                  onChange={(e) => setTxCustomCategory(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white mt-2"
+                  placeholder="Ex: Assinatura, Farmacia..."
+                />
+              )}
             </div>
             <div className="space-y-3">
               <div className="flex items-center gap-2">
