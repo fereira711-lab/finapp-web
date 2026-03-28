@@ -33,11 +33,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-900 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="glass w-full max-w-md p-6">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">FinApp</h1>
-          <p className="text-gray-400">Entre na sua conta</p>
+          <h1 className="text-3xl font-bold text-[#6366F1] mb-2">FinApp</h1>
+          <p className="text-white/45">Entre na sua conta</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -65,9 +65,9 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="text-center text-gray-400 text-sm mt-6">
+        <p className="text-center text-white/45 text-sm mt-6">
           Não tem conta?{" "}
-          <Link href="/register" className="text-primary hover:underline">
+          <Link href="/register" className="text-[#6366F1] hover:underline">
             Cadastre-se
           </Link>
         </p>

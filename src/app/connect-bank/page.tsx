@@ -124,10 +124,10 @@ export default function ConnectBankPage() {
         onReady={() => setScriptReady(true)}
       />
 
-      <h1 className="text-2xl font-bold mb-6">Conectar Banco</h1>
+      <h2 className="label-upper mb-4">Conectar Banco</h2>
 
-      <div className="bg-dark-800 rounded-2xl p-6 border border-dark-700 text-center">
-        <p className="text-gray-400 mb-6">
+      <div className="text-center py-6">
+        <p className="text-white/45 mb-6">
           Conecte sua conta bancária para importar transações automaticamente
           via Open Finance.
         </p>
