@@ -50,8 +50,10 @@ export default function CreditCardsPage() {
   const [cardColor, setCardColor] = useState(CARD_COLORS[0]);
   const [savingCard, setSavingCard] = useState(false);
 
-  // Transaction form
+  // Transaction form (create + edit)
   const [showTxForm, setShowTxForm] = useState(false);
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+  const [editingTxOriginal, setEditingTxOriginal] = useState<CardTransaction | null>(null);
   const [txDesc, setTxDesc] = useState("");
   const [txAmount, setTxAmount] = useState("");
   const [txDate, setTxDate] = useState(new Date().toISOString().split("T")[0]);
@@ -60,6 +62,16 @@ export default function CreditCardsPage() {
   const [txInstallments, setTxInstallments] = useState(false);
   const [txNumInstallments, setTxNumInstallments] = useState("2");
   const [savingTx, setSavingTx] = useState(false);
+
+  // Edit scope modal for installments
+  const [showEditScope, setShowEditScope] = useState(false);
+  const [editScopeTx, setEditScopeTx] = useState<CardTransaction | null>(null);
+  const [editAllInstallments, setEditAllInstallments] = useState(false);
+
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTxId, setDeleteTxId] = useState<string | null>(null);
+  const [deleteTxIsInstallment, setDeleteTxIsInstallment] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -116,63 +128,29 @@ export default function CreditCardsPage() {
     }
   }, [cards, activeCardIdx, loadTransactions]);
 
-  // Month navigation
   function prevMonth() {
-    if (selectedMonth === 0) {
-      setSelectedMonth(11);
-      setSelectedYear((y) => y - 1);
-    } else {
-      setSelectedMonth((m) => m - 1);
-    }
+    if (selectedMonth === 0) { setSelectedMonth(11); setSelectedYear((y) => y - 1); }
+    else { setSelectedMonth((m) => m - 1); }
   }
-
   function nextMonth() {
-    if (selectedMonth === 11) {
-      setSelectedMonth(0);
-      setSelectedYear((y) => y + 1);
-    } else {
-      setSelectedMonth((m) => m + 1);
-    }
+    if (selectedMonth === 11) { setSelectedMonth(0); setSelectedYear((y) => y + 1); }
+    else { setSelectedMonth((m) => m + 1); }
   }
+  function prevCard() { setActiveCardIdx((i) => (i === 0 ? cards.length - 1 : i - 1)); }
+  function nextCard() { setActiveCardIdx((i) => (i === cards.length - 1 ? 0 : i + 1)); }
 
-  // Card carousel
-  function prevCard() {
-    setActiveCardIdx((i) => (i === 0 ? cards.length - 1 : i - 1));
-  }
-
-  function nextCard() {
-    setActiveCardIdx((i) => (i === cards.length - 1 ? 0 : i + 1));
-  }
-
-  // Card form
+  // === Card form ===
   function resetCardForm() {
-    setCardName("");
-    setCreditLimit("");
-    setClosingDay("5");
-    setDueDay("15");
-    setCardColor(CARD_COLORS[0]);
-    setEditingCardId(null);
+    setCardName(""); setCreditLimit(""); setClosingDay("5"); setDueDay("15");
+    setCardColor(CARD_COLORS[0]); setEditingCardId(null);
   }
-
-  function openNewCard() {
-    resetCardForm();
-    setShowCardForm(true);
-  }
-
+  function openNewCard() { resetCardForm(); setShowCardForm(true); }
   function openEditCard(card: CreditCard) {
-    setEditingCardId(card.id);
-    setCardName(card.name);
-    setCreditLimit(String(card.credit_limit));
-    setClosingDay(String(card.closing_day));
-    setDueDay(String(card.due_day));
-    setCardColor(card.color);
-    setShowCardForm(true);
+    setEditingCardId(card.id); setCardName(card.name);
+    setCreditLimit(String(card.credit_limit)); setClosingDay(String(card.closing_day));
+    setDueDay(String(card.due_day)); setCardColor(card.color); setShowCardForm(true);
   }
-
-  function closeCardForm() {
-    setShowCardForm(false);
-    resetCardForm();
-  }
+  function closeCardForm() { setShowCardForm(false); resetCardForm(); }
 
   async function handleCardSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -180,16 +158,11 @@ export default function CreditCardsPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSavingCard(false); return; }
-
     const cardData = {
-      name: cardName.trim(),
-      bank_name: cardName.trim(),
+      name: cardName.trim(), bank_name: cardName.trim(),
       credit_limit: parseFloat(creditLimit) || 0,
-      closing_day: parseInt(closingDay),
-      due_day: parseInt(dueDay),
-      color: cardColor,
+      closing_day: parseInt(closingDay), due_day: parseInt(dueDay), color: cardColor,
     };
-
     if (editingCardId) {
       await supabase.from("credit_cards").update(cardData).eq("id", editingCardId);
       showToast("Cartao atualizado");
@@ -197,45 +170,57 @@ export default function CreditCardsPage() {
       await supabase.from("credit_cards").insert({ user_id: user.id, ...cardData });
       showToast("Cartao adicionado");
     }
-
-    closeCardForm();
-    setSavingCard(false);
-    await loadCards();
+    closeCardForm(); setSavingCard(false); await loadCards();
   }
 
   async function handleDeleteCard() {
     if (!editingCardId) return;
     setSavingCard(true);
     const supabase = createClient();
+    // Delete linked bills
+    await supabase.from("bills").delete().like("notes", `card:${editingCardId}%`);
     await supabase.from("card_transactions").delete().eq("card_id", editingCardId);
     await supabase.from("credit_cards").delete().eq("id", editingCardId);
-    closeCardForm();
-    setSavingCard(false);
-    setActiveCardIdx(0);
-    await loadCards();
-    showToast("Cartao removido");
+    closeCardForm(); setSavingCard(false); setActiveCardIdx(0);
+    await loadCards(); showToast("Cartao removido");
   }
 
-  // Transaction form
+  // === Transaction form ===
   function resetTxForm() {
-    setTxDesc("");
-    setTxAmount("");
-    setTxDate(new Date().toISOString().split("T")[0]);
-    setTxCategory("outros");
-    setTxCustomCategory("");
+    setTxDesc(""); setTxAmount(""); setTxDate(new Date().toISOString().split("T")[0]);
+    setTxCategory("outros"); setTxCustomCategory(""); setTxInstallments(false);
+    setTxNumInstallments("2"); setEditingTxId(null); setEditingTxOriginal(null);
+    setEditAllInstallments(false);
+  }
+  function openNewTx() { resetTxForm(); setShowTxForm(true); }
+
+  function openEditTx(tx: CardTransaction) {
+    if (tx.installments > 1) {
+      setEditScopeTx(tx);
+      setShowEditScope(true);
+      return;
+    }
+    fillTxFormForEdit(tx);
+  }
+
+  function fillTxFormForEdit(tx: CardTransaction) {
+    setEditingTxId(tx.id);
+    setEditingTxOriginal(tx);
+    setTxDesc(tx.description);
+    setTxAmount(String(tx.amount));
+    setTxDate(tx.date);
+    const cat = tx.category;
+    if (CATEGORY_CONFIG[cat]) {
+      setTxCategory(cat); setTxCustomCategory("");
+    } else {
+      setTxCategory("_custom"); setTxCustomCategory(cat);
+    }
     setTxInstallments(false);
     setTxNumInstallments("2");
-  }
-
-  function openNewTx() {
-    resetTxForm();
     setShowTxForm(true);
   }
 
-  function closeTxForm() {
-    setShowTxForm(false);
-    resetTxForm();
-  }
+  function closeTxForm() { setShowTxForm(false); resetTxForm(); }
 
   async function handleTxSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -246,6 +231,48 @@ export default function CreditCardsPage() {
     if (!user) { setSavingTx(false); return; }
 
     const card = cards[activeCardIdx];
+    const resolvedCategory = txCategory === "_custom" ? txCustomCategory.trim().toLowerCase() : txCategory;
+
+    // === EDIT MODE ===
+    if (editingTxId && editingTxOriginal) {
+      const updateData = {
+        description: txDesc.trim(),
+        amount: parseFloat(txAmount),
+        date: txDate,
+        category: resolvedCategory,
+      };
+
+      if (editAllInstallments && editingTxOriginal.installments > 1) {
+        // Edit all installments: find siblings by card_id + description + installments count
+        const { data: siblings } = await supabase
+          .from("card_transactions")
+          .select("id, date, installment_current")
+          .eq("card_id", card.id)
+          .eq("description", editingTxOriginal.description)
+          .eq("installments", editingTxOriginal.installments)
+          .eq("user_id", user.id);
+
+        if (siblings) {
+          for (const sib of siblings) {
+            await supabase.from("card_transactions")
+              .update({ description: txDesc.trim(), amount: parseFloat(txAmount), category: resolvedCategory })
+              .eq("id", sib.id);
+          }
+          // Update linked bills
+          await updateLinkedBills(supabase, user.id, card, editingTxOriginal, txDesc.trim(), parseFloat(txAmount));
+        }
+        showToast("Todas as parcelas atualizadas");
+      } else {
+        await supabase.from("card_transactions").update(updateData).eq("id", editingTxId);
+        showToast("Lancamento atualizado");
+      }
+
+      closeTxForm(); setSavingTx(false);
+      await loadTransactions(card.id);
+      return;
+    }
+
+    // === CREATE MODE ===
     const totalAmount = parseFloat(txAmount);
     const numInst = txInstallments ? parseInt(txNumInstallments) : 1;
     const installmentAmount = Math.round((totalAmount / numInst) * 100) / 100;
@@ -255,45 +282,131 @@ export default function CreditCardsPage() {
       const d = new Date(txDate + "T12:00:00");
       d.setMonth(d.getMonth() + i);
       txs.push({
-        user_id: user.id,
-        card_id: card.id,
-        description: txDesc.trim(),
-        amount: installmentAmount,
+        user_id: user.id, card_id: card.id,
+        description: txDesc.trim(), amount: installmentAmount,
         date: d.toISOString().split("T")[0],
-        installments: numInst,
-        installment_current: i + 1,
-        category: txCategory === "_custom" ? txCustomCategory.trim().toLowerCase() : txCategory,
+        installments: numInst, installment_current: i + 1,
+        category: resolvedCategory,
       });
     }
-
     await supabase.from("card_transactions").insert(txs);
 
-    closeTxForm();
-    setSavingTx(false);
+    // Create bills for each installment
+    if (numInst > 1) {
+      const bills = [];
+      for (let i = 0; i < numInst; i++) {
+        const d = new Date(txDate + "T12:00:00");
+        d.setMonth(d.getMonth() + i);
+        const billYear = d.getFullYear();
+        const billMonth = d.getMonth();
+        const lastDayOfMonth = new Date(billYear, billMonth + 1, 0).getDate();
+        const billDueDay = Math.min(card.due_day, lastDayOfMonth);
+        const billDueDate = `${billYear}-${String(billMonth + 1).padStart(2, "0")}-${String(billDueDay).padStart(2, "0")}`;
+
+        bills.push({
+          user_id: user.id,
+          description: `${card.name} - ${txDesc.trim()} ${i + 1}/${numInst}`,
+          amount: installmentAmount,
+          due_date: billDueDate,
+          type: "payable" as const,
+          status: "pending" as const,
+          recurrent: false,
+          recurrence_day: null,
+          notes: `card:${card.id}`,
+        });
+      }
+      await supabase.from("bills").insert(bills);
+    }
+
+    closeTxForm(); setSavingTx(false);
     await loadTransactions(card.id);
     showToast(
       numInst > 1
-        ? `Lancamento parcelado em ${numInst}x de ${formatCurrency(installmentAmount)}`
+        ? `Parcelado em ${numInst}x de ${formatCurrency(installmentAmount)} — contas criadas`
         : "Lancamento adicionado"
     );
   }
 
-  async function handleDeleteTx(txId: string) {
-    const supabase = createClient();
-    await supabase.from("card_transactions").delete().eq("id", txId);
-    if (cards[activeCardIdx]) {
-      await loadTransactions(cards[activeCardIdx].id);
+  async function updateLinkedBills(
+    supabase: ReturnType<typeof createClient>,
+    userId: string,
+    card: CreditCard,
+    originalTx: CardTransaction,
+    newDesc: string,
+    newAmount: number,
+  ) {
+    const { data: bills } = await supabase
+      .from("bills")
+      .select("id, description")
+      .eq("user_id", userId)
+      .like("notes", `card:${card.id}%`)
+      .like("description", `${card.name} - ${originalTx.description}%`);
+
+    if (bills) {
+      for (const bill of bills) {
+        const match = bill.description.match(/(\d+\/\d+)$/);
+        const suffix = match ? ` ${match[1]}` : "";
+        await supabase.from("bills")
+          .update({ description: `${card.name} - ${newDesc}${suffix}`, amount: newAmount })
+          .eq("id", bill.id);
+      }
     }
   }
 
-  // Calculations for active card
+  // === Delete transaction ===
+  function confirmDeleteTx(tx: CardTransaction) {
+    setDeleteTxId(tx.id);
+    setDeleteTxIsInstallment(tx.installments > 1);
+    setShowDeleteConfirm(true);
+  }
+
+  async function handleDeleteTx(deleteAll: boolean) {
+    if (!deleteTxId) return;
+    const supabase = createClient();
+    const card = cards[activeCardIdx];
+    const tx = transactions.find((t) => t.id === deleteTxId);
+
+    if (deleteAll && tx && tx.installments > 1) {
+      // Delete all siblings
+      const { data: siblings } = await supabase
+        .from("card_transactions")
+        .select("id")
+        .eq("card_id", card.id)
+        .eq("description", tx.description)
+        .eq("installments", tx.installments);
+
+      if (siblings) {
+        await supabase.from("card_transactions").delete().in("id", siblings.map((s) => s.id));
+      }
+      // Delete linked bills
+      await supabase.from("bills").delete()
+        .like("notes", `card:${card.id}%`)
+        .like("description", `${card.name} - ${tx.description}%`);
+
+      showToast("Todas as parcelas removidas");
+    } else {
+      await supabase.from("card_transactions").delete().eq("id", deleteTxId);
+      showToast("Lancamento removido");
+    }
+
+    setShowDeleteConfirm(false); setDeleteTxId(null);
+    await loadTransactions(card.id);
+  }
+
+  // Edit scope handler
+  function handleEditScopeChoice(editAll: boolean) {
+    if (!editScopeTx) return;
+    setShowEditScope(false);
+    setEditAllInstallments(editAll);
+    fillTxFormForEdit(editScopeTx);
+  }
+
+  // Calculations
   const activeCard = cards[activeCardIdx] || null;
   const totalFatura = transactions.reduce((s, t) => s + t.amount, 0);
   const availableLimit = activeCard ? activeCard.credit_limit - totalFatura : 0;
   const limitPercent = activeCard && activeCard.credit_limit > 0
-    ? Math.min((totalFatura / activeCard.credit_limit) * 100, 100)
-    : 0;
-
+    ? Math.min((totalFatura / activeCard.credit_limit) * 100, 100) : 0;
   const txAVista = transactions.filter((t) => t.installments === 1);
   const txParceladas = transactions.filter((t) => t.installments > 1);
   const totalAVista = txAVista.reduce((s, t) => s + t.amount, 0);
@@ -301,33 +414,22 @@ export default function CreditCardsPage() {
 
   return (
     <AppShell>
-      {/* Toast */}
       {toast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] glass px-5 py-3 text-sm text-green-400 flex items-center gap-2 animate-fade-in">
-          <CreditCardIcon size={14} />
-          {toast}
+          <CreditCardIcon size={14} /> {toast}
         </div>
       )}
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="label-upper">Cartoes de Credito</h2>
         <div className="flex gap-2">
           {cards.length > 0 && (
-            <button
-              onClick={openNewTx}
-              className="flex items-center gap-1.5 glass-btn text-white/60 hover:text-white text-xs uppercase tracking-wider px-3 py-2.5 rounded-xl transition-colors"
-            >
-              <Plus size={14} />
-              Lancamento
+            <button onClick={openNewTx} className="flex items-center gap-1.5 glass-btn text-white/60 hover:text-white text-xs uppercase tracking-wider px-3 py-2.5 rounded-xl transition-colors">
+              <Plus size={14} /> Lancamento
             </button>
           )}
-          <button
-            onClick={openNewCard}
-            className="flex items-center gap-1.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs uppercase tracking-wider px-3 py-2.5 rounded-xl transition-colors"
-          >
-            <Plus size={14} />
-            Cartao
+          <button onClick={openNewCard} className="flex items-center gap-1.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs uppercase tracking-wider px-3 py-2.5 rounded-xl transition-colors">
+            <Plus size={14} /> Cartao
           </button>
         </div>
       </div>
@@ -338,10 +440,7 @@ export default function CreditCardsPage() {
         <div className="text-center py-16 space-y-4">
           <CreditCardIcon size={48} className="mx-auto text-white/20" />
           <p className="text-white/30">Nenhum cartao cadastrado</p>
-          <button
-            onClick={openNewCard}
-            className="bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm px-6 py-3 rounded-xl transition-colors"
-          >
+          <button onClick={openNewCard} className="bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm px-6 py-3 rounded-xl transition-colors">
             Adicionar primeiro cartao
           </button>
         </div>
@@ -359,9 +458,7 @@ export default function CreditCardsPage() {
               style={{ background: `linear-gradient(135deg, ${activeCard?.color || "#6366F1"}, ${activeCard?.color || "#6366F1"}88)` }}
               onClick={() => activeCard && openEditCard(activeCard)}
             >
-              <div className="absolute top-3 right-3 opacity-20">
-                <CreditCardIcon size={48} />
-              </div>
+              <div className="absolute top-3 right-3 opacity-20"><CreditCardIcon size={48} /></div>
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="text-white font-bold text-lg">{activeCard?.name}</p>
@@ -377,17 +474,12 @@ export default function CreditCardsPage() {
                     <span>Limite: {formatCurrency(activeCard?.credit_limit || 0)}</span>
                   </div>
                   <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${limitPercent}%`,
-                        backgroundColor: limitPercent > 80 ? "#EF4444" : limitPercent > 50 ? "#F59E0B" : "#10B981",
-                      }}
-                    />
+                    <div className="h-full rounded-full transition-all duration-500" style={{
+                      width: `${limitPercent}%`,
+                      backgroundColor: limitPercent > 80 ? "#EF4444" : limitPercent > 50 ? "#F59E0B" : "#10B981",
+                    }} />
                   </div>
-                  <p className="text-[10px] text-white/60 mt-1">
-                    Disponivel: {formatCurrency(Math.max(availableLimit, 0))}
-                  </p>
+                  <p className="text-[10px] text-white/60 mt-1">Disponivel: {formatCurrency(Math.max(availableLimit, 0))}</p>
                 </div>
                 <div className="flex gap-6 text-[10px] text-white/60">
                   <span>Fecha dia {activeCard?.closing_day}</span>
@@ -402,55 +494,34 @@ export default function CreditCardsPage() {
             )}
           </div>
 
-          {/* Card indicators */}
           {cards.length > 1 && (
             <div className="flex justify-center gap-1.5 mb-4">
               {cards.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setActiveCardIdx(i)}
-                  className={`w-2 h-2 rounded-full transition-all ${
-                    i === activeCardIdx ? "bg-[#6366F1] w-4" : "bg-white/20"
-                  }`}
-                />
+                <button key={i} onClick={() => setActiveCardIdx(i)}
+                  className={`w-2 h-2 rounded-full transition-all ${i === activeCardIdx ? "bg-[#6366F1] w-4" : "bg-white/20"}`} />
               ))}
             </div>
           )}
 
           {/* Month carousel */}
           <div className="flex items-center justify-between mb-4">
-            <button onClick={prevMonth} className="p-2 rounded-xl glass-btn text-white/60 hover:text-white">
-              <ChevronLeft size={20} />
-            </button>
-            <span className="text-sm font-semibold tracking-wide">
-              {MONTH_NAMES[selectedMonth]} {selectedYear}
-            </span>
-            <button onClick={nextMonth} className="p-2 rounded-xl glass-btn text-white/60 hover:text-white">
-              <ChevronRight size={20} />
-            </button>
+            <button onClick={prevMonth} className="p-2 rounded-xl glass-btn text-white/60 hover:text-white"><ChevronLeft size={20} /></button>
+            <span className="text-sm font-semibold tracking-wide">{MONTH_NAMES[selectedMonth]} {selectedYear}</span>
+            <button onClick={nextMonth} className="p-2 rounded-xl glass-btn text-white/60 hover:text-white"><ChevronRight size={20} /></button>
           </div>
 
           {/* Invoice summary */}
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="glass-card p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <ShoppingCart size={12} className="text-blue-400" />
-                <p className="label-upper">A Vista</p>
-              </div>
+              <div className="flex items-center gap-1.5 mb-1"><ShoppingCart size={12} className="text-blue-400" /><p className="label-upper">A Vista</p></div>
               <p className="text-base font-bold text-blue-400">{formatCurrency(totalAVista)}</p>
             </div>
             <div className="glass-card p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Layers size={12} className="text-purple-400" />
-                <p className="label-upper">Parcelado</p>
-              </div>
+              <div className="flex items-center gap-1.5 mb-1"><Layers size={12} className="text-purple-400" /><p className="label-upper">Parcelado</p></div>
               <p className="text-base font-bold text-purple-400">{formatCurrency(totalParcelado)}</p>
             </div>
             <div className="glass-card p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Receipt size={12} className="text-white" />
-                <p className="label-upper">Total</p>
-              </div>
+              <div className="flex items-center gap-1.5 mb-1"><Receipt size={12} className="text-white" /><p className="label-upper">Total</p></div>
               <p className="text-base font-bold text-white">{formatCurrency(totalFatura)}</p>
             </div>
           </div>
@@ -466,19 +537,15 @@ export default function CreditCardsPage() {
                 return (
                   <div key={tx.id} className="flex items-center justify-between py-3 glass-divider">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: catConfig.color + "20" }}
-                      >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: catConfig.color + "20" }}>
                         <CatIcon size={14} style={{ color: catConfig.color }} />
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">
                           {tx.description}
                           {tx.installments > 1 && (
-                            <span className="text-white/40 ml-1">
-                              {tx.installment_current}/{tx.installments}
-                            </span>
+                            <span className="text-white/40 ml-1">{tx.installment_current}/{tx.installments}</span>
                           )}
                         </p>
                         <p className="text-[11px] text-white/30">
@@ -486,15 +553,14 @@ export default function CreditCardsPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                      <span className="font-bold text-sm text-white">
-                        {formatCurrency(tx.amount)}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteTx(tx.id)}
-                        className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                        title="Remover"
-                      >
+                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                      <span className="font-bold text-sm text-white">{formatCurrency(tx.amount)}</span>
+                      <button onClick={() => openEditTx(tx)}
+                        className="p-1.5 rounded-lg text-white/20 hover:text-[#6366F1] hover:bg-[#6366F1]/10 transition-colors" title="Editar">
+                        <Pencil size={14} />
+                      </button>
+                      <button onClick={() => confirmDeleteTx(tx)}
+                        className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-colors" title="Remover">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -510,97 +576,52 @@ export default function CreditCardsPage() {
       {showCardForm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeCardForm} />
-          <form
-            onSubmit={handleCardSubmit}
-            className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto"
-          >
+          <form onSubmit={handleCardSubmit} className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold">{editingCardId ? "Editar cartao" : "Novo cartao"}</h2>
-              <button type="button" onClick={closeCardForm} className="text-white/45 hover:text-white p-1">
-                <X size={20} />
-              </button>
+              <button type="button" onClick={closeCardForm} className="text-white/45 hover:text-white p-1"><X size={20} /></button>
             </div>
             <div>
               <label className="label-upper block mb-1">Nome do cartao</label>
-              <input
-                required
-                value={cardName}
-                onChange={(e) => setCardName(e.target.value)}
-                className="w-full glass-input px-3 py-3 text-base text-white"
-                placeholder="Ex: Nubank Gold, Inter Black..."
-              />
+              <input required value={cardName} onChange={(e) => setCardName(e.target.value)}
+                className="w-full glass-input px-3 py-3 text-base text-white" placeholder="Ex: Nubank Gold, Inter Black..." />
             </div>
             <div>
               <label className="label-upper block mb-1">Limite de credito</label>
-              <input
-                required
-                type="number"
-                step="0.01"
-                min="0"
-                value={creditLimit}
-                onChange={(e) => setCreditLimit(e.target.value)}
-                className="w-full glass-input px-3 py-3 text-base text-white"
-                placeholder="0,00"
-              />
+              <input required type="number" step="0.01" min="0" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value)}
+                className="w-full glass-input px-3 py-3 text-base text-white" placeholder="0,00" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label-upper block mb-1">Dia fechamento</label>
-                <input
-                  required
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={closingDay}
-                  onChange={(e) => setClosingDay(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white"
-                />
+                <input required type="number" min="1" max="31" value={closingDay} onChange={(e) => setClosingDay(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white" />
               </div>
               <div>
                 <label className="label-upper block mb-1">Dia vencimento</label>
-                <input
-                  required
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={dueDay}
-                  onChange={(e) => setDueDay(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white"
-                />
+                <input required type="number" min="1" max="31" value={dueDay} onChange={(e) => setDueDay(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white" />
               </div>
             </div>
             <div>
               <label className="label-upper block mb-1">Cor do cartao</label>
               <div className="flex flex-wrap gap-2">
                 {CARD_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setCardColor(c)}
-                    className={`w-9 h-9 rounded-xl transition-all ${
-                      cardColor === c ? "ring-2 ring-white ring-offset-2 ring-offset-transparent scale-110" : "opacity-60 hover:opacity-100"
-                    }`}
-                    style={{ backgroundColor: c }}
-                  />
+                  <button key={c} type="button" onClick={() => setCardColor(c)}
+                    className={`w-9 h-9 rounded-xl transition-all ${cardColor === c ? "ring-2 ring-white ring-offset-2 ring-offset-transparent scale-110" : "opacity-60 hover:opacity-100"}`}
+                    style={{ backgroundColor: c }} />
                 ))}
               </div>
             </div>
             <div className="flex gap-3">
               {editingCardId && (
-                <button
-                  type="button"
-                  onClick={handleDeleteCard}
-                  disabled={savingCard}
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                >
+                <button type="button" onClick={handleDeleteCard} disabled={savingCard}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50">
                   <Trash2 size={16} />
                 </button>
               )}
-              <button
-                type="submit"
-                disabled={savingCard}
-                className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
-              >
+              <button type="submit" disabled={savingCard}
+                className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
                 {savingCard ? "Salvando..." : editingCardId ? "Salvar alteracoes" : "Adicionar cartao"}
               </button>
             </div>
@@ -608,124 +629,133 @@ export default function CreditCardsPage() {
         </div>
       )}
 
-      {/* Modal: New Transaction */}
+      {/* Modal: New/Edit Transaction */}
       {showTxForm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeTxForm} />
-          <form
-            onSubmit={handleTxSubmit}
-            className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto"
-          >
+          <form onSubmit={handleTxSubmit} className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-bold">Novo lancamento</h2>
-              <button type="button" onClick={closeTxForm} className="text-white/45 hover:text-white p-1">
-                <X size={20} />
-              </button>
+              <h2 className="text-lg font-bold">{editingTxId ? "Editar lancamento" : "Novo lancamento"}</h2>
+              <button type="button" onClick={closeTxForm} className="text-white/45 hover:text-white p-1"><X size={20} /></button>
             </div>
-            <p className="text-xs text-white/40">
-              Cartao: <span className="text-white/70">{activeCard?.name}</span>
-            </p>
+            <p className="text-xs text-white/40">Cartao: <span className="text-white/70">{activeCard?.name}</span></p>
             <div>
               <label className="label-upper block mb-1">Descricao</label>
-              <input
-                required
-                value={txDesc}
-                onChange={(e) => setTxDesc(e.target.value)}
-                className="w-full glass-input px-3 py-3 text-base text-white"
-                placeholder="Ex: Netflix, Supermercado..."
-              />
+              <input required value={txDesc} onChange={(e) => setTxDesc(e.target.value)}
+                className="w-full glass-input px-3 py-3 text-base text-white" placeholder="Ex: Netflix, Supermercado..." />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label-upper block mb-1">Valor total</label>
-                <input
-                  required
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={txAmount}
-                  onChange={(e) => setTxAmount(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white"
-                  placeholder="0,00"
-                />
+                <label className="label-upper block mb-1">{editingTxId ? "Valor" : "Valor total"}</label>
+                <input required type="number" step="0.01" min="0.01" value={txAmount} onChange={(e) => setTxAmount(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white" placeholder="0,00" />
               </div>
               <div>
                 <label className="label-upper block mb-1">Data</label>
-                <input
-                  required
-                  type="date"
-                  value={txDate}
-                  onChange={(e) => setTxDate(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white"
-                />
+                <input required type="date" value={txDate} onChange={(e) => setTxDate(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white" />
               </div>
             </div>
             <div>
               <label className="label-upper block mb-1">Categoria</label>
-              <select
-                value={txCategory}
+              <select value={txCategory}
                 onChange={(e) => { setTxCategory(e.target.value); if (e.target.value !== "_custom") setTxCustomCategory(""); }}
-                className="w-full glass-input px-3 py-3 text-base text-white"
-              >
+                className="w-full glass-input px-3 py-3 text-base text-white">
                 {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
-                  <option key={key} value={key} className="bg-[#1a1a2e]">
-                    {cfg.label}
-                  </option>
+                  <option key={key} value={key} className="bg-[#1a1a2e]">{cfg.label}</option>
                 ))}
                 <option value="_custom" className="bg-[#1a1a2e]">Digitar manualmente...</option>
               </select>
               {txCategory === "_custom" && (
-                <input
-                  required
-                  value={txCustomCategory}
-                  onChange={(e) => setTxCustomCategory(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white mt-2"
-                  placeholder="Ex: Assinatura, Farmacia..."
-                />
+                <input required value={txCustomCategory} onChange={(e) => setTxCustomCategory(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white mt-2" placeholder="Ex: Assinatura, Farmacia..." />
               )}
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={txInstallments}
-                  onChange={(e) => setTxInstallments(e.target.checked)}
-                  className="w-5 h-5 rounded accent-[#6366F1]"
-                  id="installments"
-                />
-                <label htmlFor="installments" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
-                  <Layers size={14} className="text-white/45" />
-                  Parcelado
-                </label>
-              </div>
-              {txInstallments && (
-                <div className="glass-card p-3 space-y-2">
-                  <label className="label-upper block">Numero de parcelas</label>
-                  <input
-                    type="number"
-                    min="2"
-                    max="48"
-                    value={txNumInstallments}
-                    onChange={(e) => setTxNumInstallments(e.target.value)}
-                    className="w-full glass-input px-3 py-2.5 text-sm text-white"
-                  />
-                  {txAmount && (
-                    <p className="text-xs text-[#818CF8] flex items-center gap-1.5">
-                      <Layers size={12} />
-                      {txNumInstallments}x de {formatCurrency(parseFloat(txAmount) / parseInt(txNumInstallments || "1"))}
-                    </p>
-                  )}
+            {!editingTxId && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" checked={txInstallments} onChange={(e) => setTxInstallments(e.target.checked)}
+                    className="w-5 h-5 rounded accent-[#6366F1]" id="installments" />
+                  <label htmlFor="installments" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
+                    <Layers size={14} className="text-white/45" /> Parcelado
+                  </label>
                 </div>
-              )}
-            </div>
-            <button
-              type="submit"
-              disabled={savingTx}
-              className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
-            >
-              {savingTx ? "Salvando..." : "Adicionar lancamento"}
+                {txInstallments && (
+                  <div className="glass-card p-3 space-y-2">
+                    <label className="label-upper block">Numero de parcelas</label>
+                    <input type="number" min="2" max="48" value={txNumInstallments} onChange={(e) => setTxNumInstallments(e.target.value)}
+                      className="w-full glass-input px-3 py-2.5 text-sm text-white" />
+                    {txAmount && (
+                      <p className="text-xs text-[#818CF8] flex items-center gap-1.5">
+                        <Layers size={12} />
+                        {txNumInstallments}x de {formatCurrency(parseFloat(txAmount) / parseInt(txNumInstallments || "1"))}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            <button type="submit" disabled={savingTx}
+              className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
+              {savingTx ? "Salvando..." : editingTxId ? "Salvar alteracoes" : "Adicionar lancamento"}
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Modal: Edit scope for installments */}
+      {showEditScope && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditScope(false)} />
+          <div className="relative glass p-5 w-full max-w-sm space-y-4">
+            <h2 className="text-lg font-bold">Editar parcela</h2>
+            <p className="text-sm text-white/60">Este lancamento e parcelado. O que deseja editar?</p>
+            <div className="space-y-2">
+              <button onClick={() => handleEditScopeChoice(false)}
+                className="w-full glass-btn text-white text-sm py-3 rounded-xl hover:bg-white/10 transition-colors">
+                So este mes
+              </button>
+              <button onClick={() => handleEditScopeChoice(true)}
+                className="w-full glass-btn text-white text-sm py-3 rounded-xl hover:bg-white/10 transition-colors">
+                Todas as parcelas
+              </button>
+            </div>
+            <button onClick={() => setShowEditScope(false)} className="w-full text-white/40 text-sm py-2">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Delete confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)} />
+          <div className="relative glass p-5 w-full max-w-sm space-y-4">
+            <h2 className="text-lg font-bold">Confirmar exclusao</h2>
+            {deleteTxIsInstallment ? (
+              <>
+                <p className="text-sm text-white/60">Este lancamento e parcelado. O que deseja excluir?</p>
+                <div className="space-y-2">
+                  <button onClick={() => handleDeleteTx(false)}
+                    className="w-full glass-btn text-white text-sm py-3 rounded-xl hover:bg-white/10 transition-colors">
+                    So este mes
+                  </button>
+                  <button onClick={() => handleDeleteTx(true)}
+                    className="w-full bg-red-500/20 text-red-400 text-sm py-3 rounded-xl hover:bg-red-500/30 transition-colors">
+                    Todas as parcelas e contas vinculadas
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-white/60">Tem certeza que deseja excluir este lancamento?</p>
+                <button onClick={() => handleDeleteTx(false)}
+                  className="w-full bg-red-500/20 text-red-400 text-sm py-3 rounded-xl hover:bg-red-500/30 transition-colors">
+                  Excluir
+                </button>
+              </>
+            )}
+            <button onClick={() => setShowDeleteConfirm(false)} className="w-full text-white/40 text-sm py-2">Cancelar</button>
+          </div>
         </div>
       )}
     </AppShell>
