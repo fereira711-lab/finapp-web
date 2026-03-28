@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Bill, CardTransaction } from "@/lib/types";
@@ -20,6 +20,7 @@ import {
   CalendarClock,
   CreditCard,
   ExternalLink,
+  ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -79,18 +80,10 @@ function isProjectedBill(b: Bill): boolean {
 
 function getDueDateLabel(dueDate: string, status: string): { text: string; color: string } {
   if (status === "paid") return { text: `Paga em ${formatDate(dueDate)}`, color: "text-green-400" };
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate + "T12:00:00");
-  due.setHours(0, 0, 0, 0);
-  const diffMs = due.getTime() - today.getTime();
-  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 0) {
-    const absDays = Math.abs(diffDays);
-    return { text: `${absDays} dia${absDays > 1 ? "s" : ""} atrasada`, color: "text-red-400" };
-  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + "T12:00:00"); due.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) { const abs = Math.abs(diffDays); return { text: `${abs} dia${abs > 1 ? "s" : ""} atrasada`, color: "text-red-400" }; }
   if (diffDays === 0) return { text: "Vence hoje!", color: "text-yellow-400" };
   if (diffDays === 1) return { text: "Vence amanhã!", color: "text-orange-400" };
   if (diffDays <= 3) return { text: `Vence em ${diffDays} dias`, color: "text-orange-300" };
@@ -100,14 +93,9 @@ function getDueDateLabel(dueDate: string, status: string): { text: string; color
 function getBillBorderClass(dueDate: string, status: string): string {
   if (status === "paid") return "";
   if (status === "overdue") return "border-l-2 border-l-red-500 pl-3";
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate + "T12:00:00");
-  due.setHours(0, 0, 0, 0);
-  const diffMs = due.getTime() - today.getTime();
-  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + "T12:00:00"); due.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return "border-l-2 border-l-red-500 pl-3";
   if (diffDays === 0) return "border-l-2 border-l-yellow-400 pl-3";
   if (diffDays === 1) return "border-l-2 border-l-orange-400 pl-3";
@@ -118,9 +106,24 @@ function isCardBill(b: Bill): boolean {
   return !!(b.notes && b.notes.startsWith("card:"));
 }
 
-function getCardIdFromBill(b: Bill): string | null {
-  if (!b.notes || !b.notes.startsWith("card:")) return null;
-  return b.notes.replace("card:", "");
+function getCardIdFromBill(b: Bill): string {
+  return (b.notes || "").replace("card:", "");
+}
+
+function getCardNameFromBill(b: Bill): string {
+  // Description format: "CardName - Description X/Y" or "CardName - Description"
+  const idx = b.description.indexOf(" - ");
+  return idx > 0 ? b.description.substring(0, idx) : b.description;
+}
+
+interface CardBillGroup {
+  cardId: string;
+  cardName: string;
+  bills: Bill[];
+  totalAmount: number;
+  dueDate: string;
+  status: "pending" | "paid" | "overdue";
+  count: number;
 }
 
 export default function BillsPage() {
@@ -148,7 +151,6 @@ export default function BillsPage() {
 
   // Card detail modal
   const [showCardDetail, setShowCardDetail] = useState(false);
-  const [cardDetailBill, setCardDetailBill] = useState<Bill | null>(null);
   const [cardDetailTxs, setCardDetailTxs] = useState<CardTransaction[]>([]);
   const [cardDetailName, setCardDetailName] = useState("");
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
@@ -173,14 +175,9 @@ export default function BillsPage() {
     let result = data || [];
 
     const today = new Date().toISOString().split("T")[0];
-    const toUpdate = result.filter(
-      (b) => b.status === "pending" && b.due_date < today
-    );
+    const toUpdate = result.filter((b) => b.status === "pending" && b.due_date < today);
     if (toUpdate.length > 0) {
-      await supabase
-        .from("bills")
-        .update({ status: "overdue" })
-        .in("id", toUpdate.map((b) => b.id));
+      await supabase.from("bills").update({ status: "overdue" }).in("id", toUpdate.map((b) => b.id));
       result = result.map((b) =>
         toUpdate.find((u) => u.id === b.id) ? { ...b, status: "overdue" as const } : b
       );
@@ -190,15 +187,53 @@ export default function BillsPage() {
     setLoading(false);
   }, [selectedYear, selectedMonth]);
 
-  useEffect(() => {
-    setLoading(true);
-    load();
-  }, [load]);
+  useEffect(() => { setLoading(true); load(); }, [load]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 4000);
-  }
+  // Separate regular bills from card bills, then group card bills by cardId
+  const { regularBills, cardGroups } = useMemo(() => {
+    const regular: Bill[] = [];
+    const cardMap: Record<string, CardBillGroup> = {};
+
+    for (const b of bills) {
+      if (isCardBill(b)) {
+        const cardId = getCardIdFromBill(b);
+        const cardName = getCardNameFromBill(b);
+        if (!cardMap[cardId]) {
+          cardMap[cardId] = {
+            cardId, cardName, bills: [], totalAmount: 0,
+            dueDate: b.due_date, status: "paid", count: 0,
+          };
+        }
+        cardMap[cardId].bills.push(b);
+        cardMap[cardId].totalAmount += b.amount;
+        cardMap[cardId].count++;
+        // Group status: overdue if any overdue, pending if any pending, paid if all paid
+        if (b.status === "overdue") cardMap[cardId].status = "overdue";
+        else if (b.status === "pending" && cardMap[cardId].status !== "overdue") cardMap[cardId].status = "pending";
+      } else {
+        regular.push(b);
+      }
+    }
+
+    return { regularBills: regular, cardGroups: Object.values(cardMap) };
+  }, [bills]);
+
+  // Apply filter
+  const filteredRegular = regularBills.filter((b) => filter === "all" || b.status === filter);
+  const filteredCardGroups = cardGroups.filter((g) => filter === "all" || g.status === filter);
+
+  // Totals — use regular bills + card group totals (avoids double counting)
+  const totalPayable = regularBills.filter((b) => b.type === "payable").reduce((s, b) => s + b.amount, 0)
+    + cardGroups.reduce((s, g) => s + g.totalAmount, 0);
+  const totalReceivable = regularBills.filter((b) => b.type === "receivable").reduce((s, b) => s + b.amount, 0);
+  const balance = totalReceivable - totalPayable;
+
+  const allBillStatuses = [...regularBills.map((b) => b.status), ...cardGroups.map((g) => g.status)];
+  const paidCount = allBillStatuses.filter((s) => s === "paid").length;
+  const pendingCount = allBillStatuses.filter((s) => s === "pending").length;
+  const overdueCount = allBillStatuses.filter((s) => s === "overdue").length;
+
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 4000); }
 
   function prevMonth() {
     if (selectedMonth === 0) { setSelectedMonth(11); setSelectedYear((y) => y - 1); }
@@ -209,42 +244,21 @@ export default function BillsPage() {
     else { setSelectedMonth((m) => m + 1); }
   }
 
-  const filtered = bills.filter((b) => {
-    if (filter === "all") return true;
-    return b.status === filter;
-  });
-
-  const totalPayable = bills.filter((b) => b.type === "payable").reduce((s, b) => s + b.amount, 0);
-  const totalReceivable = bills.filter((b) => b.type === "receivable").reduce((s, b) => s + b.amount, 0);
-  const balance = totalReceivable - totalPayable;
-  const paidCount = bills.filter((b) => b.status === "paid").length;
-  const pendingCount = bills.filter((b) => b.status === "pending").length;
-  const overdueCount = bills.filter((b) => b.status === "overdue").length;
-
   function resetForm() {
     setDesc(""); setAmount(""); setDueDate(""); setType("payable");
     setStatus("pending"); setRecurrent(false); setProjectionMonths(3);
     setNotes(""); setEditingId(null);
   }
   function openNew() { resetForm(); setShowForm(true); }
-
   function openEdit(b: Bill) {
-    // If it's a card bill, show the card detail modal instead
-    if (isCardBill(b)) {
-      openCardDetail(b);
-      return;
-    }
     setEditingId(b.id); setDesc(b.description); setAmount(String(b.amount));
     setDueDate(b.due_date); setType(b.type); setStatus(b.status);
     setRecurrent(b.recurrent); setNotes(b.notes || ""); setShowForm(true);
   }
-
   function closeForm() { setShowForm(false); resetForm(); }
 
-  async function openCardDetail(b: Bill) {
-    const cardId = getCardIdFromBill(b);
-    if (!cardId) return;
-    setCardDetailBill(b);
+  async function openCardDetail(group: CardBillGroup) {
+    setCardDetailName(group.cardName);
     setCardDetailLoading(true);
     setShowCardDetail(true);
 
@@ -252,15 +266,6 @@ export default function BillsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setCardDetailLoading(false); return; }
 
-    // Get card name
-    const { data: card } = await supabase
-      .from("credit_cards")
-      .select("name")
-      .eq("id", cardId)
-      .single();
-    setCardDetailName(card?.name || "Cartao");
-
-    // Get transactions for that card in this month
     const startOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-01`;
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     const endOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
@@ -268,7 +273,7 @@ export default function BillsPage() {
     const { data: txs } = await supabase
       .from("card_transactions")
       .select("*")
-      .eq("card_id", cardId)
+      .eq("card_id", group.cardId)
       .eq("user_id", user.id)
       .gte("date", startOfMonth)
       .lte("date", endOfMonth)
@@ -310,11 +315,8 @@ export default function BillsPage() {
             recurrent: true, recurrence_day: recurrenceDay, notes: notes.trim() || null,
           });
         }
-        if (futureBills.length > 0) {
-          await supabase.from("bills").insert(futureBills);
-        }
-        const endDate = formatDate(getDueDateForMonth(dueDate, projectionMonths));
-        showToast(`Conta criada com projeção de ${projectionMonths} meses até ${endDate}`);
+        if (futureBills.length > 0) { await supabase.from("bills").insert(futureBills); }
+        showToast(`Conta criada com projeção de ${projectionMonths} meses até ${formatDate(getProjectionEndDate(dueDate, projectionMonths))}`);
       }
     }
     closeForm(); setSaving(false); setLoading(true); load();
@@ -332,15 +334,24 @@ export default function BillsPage() {
     setMarkingId(id);
     const supabase = createClient();
     await supabase.from("bills").update({ status: "paid" }).eq("id", id);
-    setBills((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, status: "paid" as const } : b))
-    );
+    setBills((prev) => prev.map((b) => (b.id === id ? { ...b, status: "paid" as const } : b)));
+    setMarkingId(null);
+  }
+
+  async function markCardGroupAsPaid(group: CardBillGroup) {
+    setMarkingId(group.cardId);
+    const supabase = createClient();
+    const ids = group.bills.map((b) => b.id);
+    await supabase.from("bills").update({ status: "paid" }).in("id", ids);
+    setBills((prev) => prev.map((b) => ids.includes(b.id) ? { ...b, status: "paid" as const } : b));
     setMarkingId(null);
   }
 
   const projectionPreview = recurrent && dueDate && !editingId
     ? `Serão criadas ${projectionMonths + 1} contas até ${formatDate(getProjectionEndDate(dueDate, projectionMonths))}`
     : null;
+
+  const hasItems = filteredRegular.length > 0 || filteredCardGroups.length > 0;
 
   return (
     <AppShell>
@@ -429,7 +440,6 @@ export default function BillsPage() {
                 </select>
               </div>
             </div>
-
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <input type="checkbox" checked={recurrent} onChange={(e) => setRecurrent(e.target.checked)}
@@ -448,20 +458,16 @@ export default function BillsPage() {
                     ))}
                   </select>
                   {projectionPreview && (
-                    <p className="text-xs text-[#818CF8] flex items-center gap-1.5">
-                      <CalendarClock size={12} /> {projectionPreview}
-                    </p>
+                    <p className="text-xs text-[#818CF8] flex items-center gap-1.5"><CalendarClock size={12} /> {projectionPreview}</p>
                   )}
                 </div>
               )}
             </div>
-
             <div>
               <label className="label-upper block mb-1">Observacoes</label>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
                 className="w-full glass-input px-3 py-3 text-base text-white resize-none" placeholder="Opcional..." />
             </div>
-
             <div className="flex gap-3">
               {editingId && (
                 <button type="button" onClick={handleDelete} disabled={saving}
@@ -483,7 +489,7 @@ export default function BillsPage() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCardDetail(false)} />
           <div className="relative glass p-5 w-full max-w-md max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <CreditCard size={18} className="text-[#6366F1]" />
                 <h2 className="text-lg font-bold">{cardDetailName}</h2>
@@ -518,7 +524,6 @@ export default function BillsPage() {
                     </div>
                   ))}
                 </div>
-
                 <div className="glass-card p-3 mb-4">
                   <div className="flex justify-between text-sm">
                     <span className="text-white/60">Total da fatura</span>
@@ -529,10 +534,9 @@ export default function BillsPage() {
                 </div>
               </>
             )}
-
             <Link href="/credit-cards"
               className="flex items-center justify-center gap-2 w-full glass-btn text-[#6366F1] text-sm py-3 rounded-xl hover:bg-[#6366F1]/10 transition-colors">
-              <ExternalLink size={14} /> Ver pagina do cartao
+              <ExternalLink size={14} /> Ver cartao completo
             </Link>
           </div>
         </div>
@@ -553,30 +557,63 @@ export default function BillsPage() {
       {/* Lista */}
       {loading ? (
         <p className="text-white/45">Carregando...</p>
-      ) : filtered.length === 0 ? (
+      ) : !hasItems ? (
         <p className="text-white/30">Nenhuma conta encontrada.</p>
       ) : (
         <div className="space-y-1">
-          {filtered.map((b) => {
+          {/* Card groups */}
+          {filteredCardGroups.map((group) => {
+            const dateLabel = getDueDateLabel(group.dueDate, group.status);
+            const borderClass = getBillBorderClass(group.dueDate, group.status);
+            return (
+              <div key={group.cardId}
+                className={`flex items-center justify-between py-3 glass-divider ${borderClass}`}>
+                <button onClick={() => openCardDetail(group)} className="min-w-0 flex-1 text-left">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CreditCard size={14} className="text-[#6366F1] flex-shrink-0" />
+                    <p className="font-medium text-sm truncate">{group.cardName}</p>
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/10 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
+                      Cartao
+                    </span>
+                    <ChevronDown size={12} className="text-white/20 flex-shrink-0" />
+                  </div>
+                  <p className="text-[11px] text-white/40 mt-0.5">
+                    {group.count} lancamento{group.count > 1 ? "s" : ""} · <span className={dateLabel.color}>{dateLabel.text}</span>
+                  </p>
+                </button>
+                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                  <div className="text-right">
+                    <span className="font-bold text-sm text-white">-{formatCurrency(group.totalAmount)}</span>
+                    <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[group.status]}`}>
+                      {statusLabel[group.status]}
+                    </span>
+                  </div>
+                  {(group.status === "pending" || group.status === "overdue") && (
+                    <button onClick={() => markCardGroupAsPaid(group)} disabled={markingId === group.cardId}
+                      title="Marcar fatura como paga"
+                      className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50">
+                      <Check size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Regular bills */}
+          {filteredRegular.map((b) => {
             const projected = isProjectedBill(b);
             const dateLabel = getDueDateLabel(b.due_date, b.status);
             const borderClass = getBillBorderClass(b.due_date, b.status);
-            const isCard = isCardBill(b);
             return (
               <div key={b.id}
                 className={`flex items-center justify-between py-3 glass-divider ${projected ? "opacity-55" : ""} ${borderClass}`}>
                 <button onClick={() => openEdit(b)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {isCard && <CreditCard size={14} className="text-[#6366F1] flex-shrink-0" />}
                     <p className="font-medium text-sm truncate">{b.description}</p>
                     {b.recurrent && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
                         <RefreshCw size={10} /> Recorrente
-                      </span>
-                    )}
-                    {isCard && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/10 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
-                        <CreditCard size={10} /> Cartao
                       </span>
                     )}
                     {projected && (
