@@ -18,6 +18,7 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
+  CalendarClock,
 } from "lucide-react";
 
 type StatusFilter = "all" | "pending" | "paid" | "overdue";
@@ -25,6 +26,12 @@ type StatusFilter = "all" | "pending" | "paid" | "overdue";
 const MONTH_NAMES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+const PROJECTION_OPTIONS = [
+  { value: 3, label: "3 meses" },
+  { value: 6, label: "6 meses" },
+  { value: 12, label: "12 meses" },
 ];
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
@@ -46,16 +53,27 @@ const statusLabel: Record<string, string> = {
   overdue: "Atrasada",
 };
 
-function getNextDueDate(currentDue: string): string {
-  const d = new Date(currentDue + "T12:00:00");
+function getDueDateForMonth(baseDate: string, monthsAhead: number): string {
+  const d = new Date(baseDate + "T12:00:00");
   const day = d.getDate();
-  const nextMonth = d.getMonth() + 1;
-  const year = d.getFullYear();
-  // Handle month overflow and day clamping (e.g. Jan 31 -> Feb 28)
-  const next = new Date(year, nextMonth, 1);
-  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
-  next.setDate(Math.min(day, lastDay));
-  return next.toISOString().split("T")[0];
+  const target = new Date(d.getFullYear(), d.getMonth() + monthsAhead, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, lastDay));
+  return target.toISOString().split("T")[0];
+}
+
+function getProjectionEndDate(baseDate: string, months: number): string {
+  return getDueDateForMonth(baseDate, months);
+}
+
+// A bill is "projected" if it's recurrent, pending, and its due_date is in a future month
+function isProjectedBill(b: Bill): boolean {
+  if (!b.recurrent || b.status !== "pending") return false;
+  const today = new Date();
+  const currentYM = today.getFullYear() * 12 + today.getMonth();
+  const d = new Date(b.due_date + "T12:00:00");
+  const billYM = d.getFullYear() * 12 + d.getMonth();
+  return billYM > currentYM;
 }
 
 export default function BillsPage() {
@@ -78,6 +96,7 @@ export default function BillsPage() {
   const [type, setType] = useState<"payable" | "receivable">("payable");
   const [status, setStatus] = useState<"pending" | "paid" | "overdue">("pending");
   const [recurrent, setRecurrent] = useState(false);
+  const [projectionMonths, setProjectionMonths] = useState(3);
   const [notes, setNotes] = useState("");
 
   const load = useCallback(async () => {
@@ -145,22 +164,19 @@ export default function BillsPage() {
     }
   }
 
-  // --- Month filtering ---
-  const monthBills = bills;
-
-  const filtered = monthBills.filter((b) => {
+  const filtered = bills.filter((b) => {
     if (filter === "all") return true;
     return b.status === filter;
   });
 
-  const totalPayable = monthBills
+  const totalPayable = bills
     .filter((b) => b.type === "payable" && b.status !== "paid")
     .reduce((s, b) => s + b.amount, 0);
-  const totalReceivable = monthBills
+  const totalReceivable = bills
     .filter((b) => b.type === "receivable" && b.status !== "paid")
     .reduce((s, b) => s + b.amount, 0);
   const balance = totalReceivable - totalPayable;
-  const pendingCount = monthBills.filter(
+  const pendingCount = bills.filter(
     (b) => b.status === "pending" || b.status === "overdue"
   ).length;
 
@@ -171,6 +187,7 @@ export default function BillsPage() {
     setType("payable");
     setStatus("pending");
     setRecurrent(false);
+    setProjectionMonths(3);
     setNotes("");
     setEditingId(null);
   }
@@ -204,14 +221,17 @@ export default function BillsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaving(false); return; }
 
+    const parsedAmount = parseFloat(amount);
+    const recurrenceDay = recurrent ? new Date(dueDate + "T12:00:00").getDate() : null;
+
     const billData = {
       description: desc.trim(),
-      amount: parseFloat(amount),
+      amount: parsedAmount,
       due_date: dueDate,
       type,
       status,
       recurrent,
-      recurrence_day: recurrent ? new Date(dueDate).getDate() : null,
+      recurrence_day: recurrenceDay,
       notes: notes.trim() || null,
     };
 
@@ -222,7 +242,33 @@ export default function BillsPage() {
       if (status === "pending" && dueDate < today) {
         billData.status = "overdue";
       }
+
+      // Insert the first bill
       await supabase.from("bills").insert({ user_id: user.id, ...billData });
+
+      // If recurrent, create projected bills for future months
+      if (recurrent && projectionMonths > 0) {
+        const futureBills = [];
+        for (let i = 1; i <= projectionMonths; i++) {
+          const futureDue = getDueDateForMonth(dueDate, i);
+          futureBills.push({
+            user_id: user.id,
+            description: desc.trim(),
+            amount: parsedAmount,
+            due_date: futureDue,
+            type,
+            status: "pending" as const,
+            recurrent: true,
+            recurrence_day: recurrenceDay,
+            notes: notes.trim() || null,
+          });
+        }
+        if (futureBills.length > 0) {
+          await supabase.from("bills").insert(futureBills);
+        }
+        const endDate = formatDate(getDueDateForMonth(dueDate, projectionMonths));
+        showToast(`Conta criada com projeção de ${projectionMonths} meses até ${endDate}`);
+      }
     }
 
     closeForm();
@@ -245,36 +291,17 @@ export default function BillsPage() {
   async function markAsPaid(id: string) {
     setMarkingId(id);
     const supabase = createClient();
-    const bill = bills.find((b) => b.id === id);
-    if (!bill) { setMarkingId(null); return; }
-
     await supabase.from("bills").update({ status: "paid" }).eq("id", id);
-
-    // Recurrence: create next month's bill
-    if (bill.recurrent) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const nextDue = getNextDueDate(bill.due_date);
-        await supabase.from("bills").insert({
-          user_id: user.id,
-          description: bill.description,
-          amount: bill.amount,
-          due_date: nextDue,
-          type: bill.type,
-          status: "pending",
-          recurrent: true,
-          recurrence_day: bill.recurrence_day,
-          notes: bill.notes,
-        });
-        showToast(`Próxima parcela criada para ${formatDate(nextDue)}`);
-      }
-    }
-
     setBills((prev) =>
       prev.map((b) => (b.id === id ? { ...b, status: "paid" as const } : b))
     );
     setMarkingId(null);
   }
+
+  // Preview text for projection
+  const projectionPreview = recurrent && dueDate && !editingId
+    ? `Serão criadas ${projectionMonths + 1} contas até ${formatDate(getProjectionEndDate(dueDate, projectionMonths))}`
+    : null;
 
   return (
     <AppShell>
@@ -418,19 +445,47 @@ export default function BillsPage() {
                 </select>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={recurrent}
-                onChange={(e) => setRecurrent(e.target.checked)}
-                className="w-5 h-5 rounded accent-[#6366F1]"
-                id="recurrent"
-              />
-              <label htmlFor="recurrent" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
-                <RefreshCw size={14} className="text-white/45" />
-                Recorrente
-              </label>
+
+            {/* Recorrência */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={recurrent}
+                  onChange={(e) => setRecurrent(e.target.checked)}
+                  className="w-5 h-5 rounded accent-[#6366F1]"
+                  id="recurrent"
+                />
+                <label htmlFor="recurrent" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
+                  <RefreshCw size={14} className="text-white/45" />
+                  Recorrente
+                </label>
+              </div>
+
+              {recurrent && !editingId && (
+                <div className="glass-card p-3 space-y-2">
+                  <label className="label-upper block">Projetar para quantos meses?</label>
+                  <select
+                    value={projectionMonths}
+                    onChange={(e) => setProjectionMonths(Number(e.target.value))}
+                    className="w-full glass-input px-3 py-2.5 text-sm text-white"
+                  >
+                    {PROJECTION_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value} className="bg-[#1a1a2e]">
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  {projectionPreview && (
+                    <p className="text-xs text-[#818CF8] flex items-center gap-1.5">
+                      <CalendarClock size={12} />
+                      {projectionPreview}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
+
             <div>
               <label className="label-upper block mb-1">Observacoes</label>
               <textarea
@@ -489,51 +544,60 @@ export default function BillsPage() {
         <p className="text-white/30">Nenhuma conta encontrada.</p>
       ) : (
         <div className="space-y-1">
-          {filtered.map((b) => (
-            <div
-              key={b.id}
-              className="flex items-center justify-between py-3 glass-divider"
-            >
-              <button
-                onClick={() => openEdit(b)}
-                className="min-w-0 flex-1 text-left"
+          {filtered.map((b) => {
+            const projected = isProjectedBill(b);
+            return (
+              <div
+                key={b.id}
+                className={`flex items-center justify-between py-3 glass-divider ${projected ? "opacity-55" : ""}`}
               >
-                <div className="flex items-center gap-2">
-                  <p className="font-medium text-sm truncate">{b.description}</p>
-                  {b.recurrent && (
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
-                      <RefreshCw size={10} />
-                      Recorrente
+                <button
+                  onClick={() => openEdit(b)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-sm truncate">{b.description}</p>
+                    {b.recurrent && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
+                        <RefreshCw size={10} />
+                        Recorrente
+                      </span>
+                    )}
+                    {projected && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 text-white/40 text-[10px] uppercase tracking-wider flex-shrink-0">
+                        <CalendarClock size={10} />
+                        Projetado
+                      </span>
+                    )}
+                    <Pencil size={12} className="text-white/20 flex-shrink-0" />
+                  </div>
+                  <p className="text-xs text-white/30 mt-0.5">
+                    Vence em {formatDate(b.due_date)} · {b.type === "payable" ? "A pagar" : "A receber"}
+                  </p>
+                </button>
+                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                  <div className="text-right">
+                    <span className={`font-bold text-sm ${b.type === "receivable" ? "text-green-400" : "text-white"}`}>
+                      {b.type === "receivable" ? "+" : "-"}{formatCurrency(b.amount)}
                     </span>
+                    <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[b.status]}`}>
+                      {statusLabel[b.status]}
+                    </span>
+                  </div>
+                  {(b.status === "pending" || b.status === "overdue") && (
+                    <button
+                      onClick={() => markAsPaid(b.id)}
+                      disabled={markingId === b.id}
+                      title="Marcar como pago"
+                      className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
+                    >
+                      <Check size={16} />
+                    </button>
                   )}
-                  <Pencil size={12} className="text-white/20 flex-shrink-0" />
                 </div>
-                <p className="text-xs text-white/30 mt-0.5">
-                  Vence em {formatDate(b.due_date)} · {b.type === "payable" ? "A pagar" : "A receber"}
-                </p>
-              </button>
-              <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                <div className="text-right">
-                  <span className={`font-bold text-sm ${b.type === "receivable" ? "text-green-400" : "text-white"}`}>
-                    {b.type === "receivable" ? "+" : "-"}{formatCurrency(b.amount)}
-                  </span>
-                  <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[b.status]}`}>
-                    {statusLabel[b.status]}
-                  </span>
-                </div>
-                {(b.status === "pending" || b.status === "overdue") && (
-                  <button
-                    onClick={() => markAsPaid(b.id)}
-                    disabled={markingId === b.id}
-                    title="Marcar como pago"
-                    className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50"
-                  >
-                    <Check size={16} />
-                  </button>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </AppShell>
