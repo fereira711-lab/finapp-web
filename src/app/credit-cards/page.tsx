@@ -291,39 +291,41 @@ export default function CreditCardsPage() {
     }
     await supabase.from("card_transactions").insert(txs);
 
-    // Create bills for each installment
-    if (numInst > 1) {
-      const bills = [];
-      for (let i = 0; i < numInst; i++) {
-        const d = new Date(txDate + "T12:00:00");
-        d.setMonth(d.getMonth() + i);
-        const billYear = d.getFullYear();
-        const billMonth = d.getMonth();
-        const lastDayOfMonth = new Date(billYear, billMonth + 1, 0).getDate();
-        const billDueDay = Math.min(card.due_day, lastDayOfMonth);
-        const billDueDate = `${billYear}-${String(billMonth + 1).padStart(2, "0")}-${String(billDueDay).padStart(2, "0")}`;
+    // Create bills for each installment (and for single purchases too)
+    const bills = [];
+    for (let i = 0; i < numInst; i++) {
+      const d = new Date(txDate + "T12:00:00");
+      d.setMonth(d.getMonth() + i);
+      const billYear = d.getFullYear();
+      const billMonth = d.getMonth();
+      const lastDayOfMonth = new Date(billYear, billMonth + 1, 0).getDate();
+      const billDueDay = Math.min(card.due_day, lastDayOfMonth);
+      const billDueDate = `${billYear}-${String(billMonth + 1).padStart(2, "0")}-${String(billDueDay).padStart(2, "0")}`;
 
-        bills.push({
-          user_id: user.id,
-          description: `${card.name} - ${txDesc.trim()} ${i + 1}/${numInst}`,
-          amount: installmentAmount,
-          due_date: billDueDate,
-          type: "payable" as const,
-          status: "pending" as const,
-          recurrent: false,
-          recurrence_day: null,
-          notes: `card:${card.id}`,
-        });
-      }
-      await supabase.from("bills").insert(bills);
+      const billDesc = numInst > 1
+        ? `${card.name} - ${txDesc.trim()} ${i + 1}/${numInst}`
+        : `${card.name} - ${txDesc.trim()}`;
+
+      bills.push({
+        user_id: user.id,
+        description: billDesc,
+        amount: installmentAmount,
+        due_date: billDueDate,
+        type: "payable" as const,
+        status: "pending" as const,
+        recurrent: false,
+        recurrence_day: null,
+        notes: `card:${card.id}`,
+      });
     }
+    await supabase.from("bills").insert(bills);
 
     closeTxForm(); setSavingTx(false);
     await loadTransactions(card.id);
     showToast(
       numInst > 1
         ? `Parcelado em ${numInst}x de ${formatCurrency(installmentAmount)} — contas criadas`
-        : "Lancamento adicionado"
+        : "Lancamento adicionado — conta criada"
     );
   }
 
@@ -386,6 +388,15 @@ export default function CreditCardsPage() {
       showToast("Todas as parcelas removidas");
     } else {
       await supabase.from("card_transactions").delete().eq("id", deleteTxId);
+      // Delete linked bill for this specific transaction
+      if (tx) {
+        const billDescPattern = tx.installments > 1
+          ? `${card.name} - ${tx.description} ${tx.installment_current}/${tx.installments}`
+          : `${card.name} - ${tx.description}`;
+        await supabase.from("bills").delete()
+          .like("notes", `card:${card.id}%`)
+          .eq("description", billDescPattern);
+      }
       showToast("Lancamento removido");
     }
 
