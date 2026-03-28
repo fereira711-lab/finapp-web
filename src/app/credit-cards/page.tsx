@@ -320,6 +320,11 @@ export default function CreditCardsPage() {
     }
     await supabase.from("bills").insert(bills);
 
+    // Navigate to the month of the first installment so user sees it
+    const firstDate = new Date(txDate + "T12:00:00");
+    setSelectedYear(firstDate.getFullYear());
+    setSelectedMonth(firstDate.getMonth());
+
     closeTxForm(); setSavingTx(false);
     await loadTransactions(card.id);
     showToast(
