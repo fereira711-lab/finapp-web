@@ -24,6 +24,7 @@ export default function GoalsPage() {
   const [formCategory, setFormCategory] = useState("");
   const [formLimit, setFormLimit] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [customCategory, setCustomCategory] = useState("");
 
   async function loadGoals() {
     const supabase = createClient();
@@ -69,20 +70,24 @@ export default function GoalsPage() {
 
   function openCreate() {
     setEditingGoal(null);
-    setFormCategory(EXPENSE_CATEGORIES[0]);
+    setFormCategory(availableCategories.length > 0 ? availableCategories[0] : "__custom__");
+    setCustomCategory("");
     setFormLimit("");
     setShowForm(true);
   }
 
   function openEdit(g: GoalWithSpent) {
     setEditingGoal(g);
-    setFormCategory(g.category);
+    const isKnown = EXPENSE_CATEGORIES.includes(g.category);
+    setFormCategory(isKnown ? g.category : "__custom__");
+    setCustomCategory(isKnown ? "" : g.category);
     setFormLimit(String(g.monthly_limit));
     setShowForm(true);
   }
 
   async function handleSave() {
-    if (!formCategory || !formLimit) return;
+    const finalCategory = formCategory === "__custom__" ? customCategory.trim().toLowerCase() : formCategory;
+    if (!finalCategory || !formLimit) return;
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -91,11 +96,11 @@ export default function GoalsPage() {
     if (isNaN(limit) || limit <= 0) return;
 
     if (editingGoal) {
-      await supabase.from("goals").update({ category: formCategory, monthly_limit: limit })
+      await supabase.from("goals").update({ category: finalCategory, monthly_limit: limit })
         .eq("id", editingGoal.id);
     } else {
       await supabase.from("goals").upsert({
-        user_id: user.id, category: formCategory, monthly_limit: limit,
+        user_id: user.id, category: finalCategory, monthly_limit: limit,
       }, { onConflict: "user_id,category" });
     }
 
@@ -139,11 +144,9 @@ export default function GoalsPage() {
               <Target size={18} className="text-[#6366F1]" />
               <h1 className="text-lg font-bold">Metas Financeiras</h1>
             </div>
-            {availableCategories.length > 0 && (
-              <button onClick={openCreate} className="glass-btn flex items-center gap-1.5 px-3 py-2 text-xs">
-                <Plus size={14} /> Nova Meta
-              </button>
-            )}
+            <button onClick={openCreate} className="glass-btn flex items-center gap-1.5 px-3 py-2 text-xs">
+              <Plus size={14} /> Nova Meta
+            </button>
           </div>
 
           {/* Goals List */}
@@ -223,13 +226,28 @@ export default function GoalsPage() {
                     <label className="label-upper mb-1 block">Categoria</label>
                     <select
                       value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
+                      onChange={(e) => { setFormCategory(e.target.value); if (e.target.value !== "__custom__") setCustomCategory(""); }}
                       className="glass-input w-full px-3 py-2 text-sm"
+                      style={{ background: "#1E293B", color: "white" }}
                     >
                       {(editingGoal ? EXPENSE_CATEGORIES : availableCategories).map((c) => (
-                        <option key={c} value={c}>{getCategoryConfig(c).label}</option>
+                        <option key={c} value={c} style={{ background: "#1E293B", color: "white" }}>
+                          {getCategoryConfig(c).label}
+                        </option>
                       ))}
+                      <option value="__custom__" style={{ background: "#1E293B", color: "white" }}>
+                        Personalizada...
+                      </option>
                     </select>
+                    {formCategory === "__custom__" && (
+                      <input
+                        type="text"
+                        value={customCategory}
+                        onChange={(e) => setCustomCategory(e.target.value)}
+                        placeholder="Nome da categoria"
+                        className="glass-input w-full px-3 py-2 text-sm mt-2"
+                      />
+                    )}
                   </div>
 
                   <div>
