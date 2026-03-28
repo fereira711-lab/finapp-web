@@ -61,7 +61,8 @@ export default function DashboardPage() {
     const [monthTxRes, billsRes, allTxRes, recentRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes] = await Promise.all([
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
-      supabase.from("bills").select("amount").eq("user_id", user.id).eq("status", "pending"),
+      supabase.from("bills").select("amount").eq("user_id", user.id).eq("status", "pending")
+        .gte("due_date", startStr).lte("due_date", endStr),
       supabase.from("transactions").select("amount, type, category, date")
         .eq("user_id", user.id).gte("date", sixMonthsAgo).order("date", { ascending: true }),
       supabase.from("transactions").select("*")
