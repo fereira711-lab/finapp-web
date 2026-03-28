@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ArrowLeftRight, Receipt, Bot, User, BarChart3, Landmark } from "lucide-react";
+import { useBillAlerts } from "@/lib/useBillAlerts";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -16,6 +17,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { totalAlerts } = useBillAlerts();
 
   return (
     <aside className="hidden md:flex md:flex-col md:w-64 glass-nav h-screen fixed left-0 top-0 z-40"
@@ -27,6 +29,7 @@ export default function Sidebar() {
       <nav className="flex-1 px-3 space-y-1">
         {navItems.map((item) => {
           const active = pathname === item.href;
+          const showBadge = item.href === "/bills" && totalAlerts > 0;
           return (
             <Link
               key={item.href}
@@ -38,7 +41,12 @@ export default function Sidebar() {
               }`}
             >
               <item.icon size={18} strokeWidth={active ? 2.2 : 1.8} />
-              <span>{item.label}</span>
+              <span className="flex-1">{item.label}</span>
+              {showBadge && (
+                <span className="min-w-[20px] h-5 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5">
+                  {totalAlerts > 9 ? "9+" : totalAlerts}
+                </span>
+              )}
             </Link>
           );
         })}

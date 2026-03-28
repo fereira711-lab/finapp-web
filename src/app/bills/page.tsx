@@ -75,6 +75,43 @@ function isProjectedBill(b: Bill): boolean {
   return billYM > currentYM;
 }
 
+function getDueDateLabel(dueDate: string, status: string): { text: string; color: string } {
+  if (status === "paid") return { text: `Paga em ${formatDate(dueDate)}`, color: "text-green-400" };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + "T12:00:00");
+  due.setHours(0, 0, 0, 0);
+  const diffMs = due.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const absDays = Math.abs(diffDays);
+    return { text: `${absDays} dia${absDays > 1 ? "s" : ""} atrasada`, color: "text-red-400" };
+  }
+  if (diffDays === 0) return { text: "Vence hoje!", color: "text-yellow-400" };
+  if (diffDays === 1) return { text: "Vence amanhã!", color: "text-orange-400" };
+  if (diffDays <= 3) return { text: `Vence em ${diffDays} dias`, color: "text-orange-300" };
+  return { text: `Vence em ${formatDate(dueDate)}`, color: "text-white/30" };
+}
+
+function getBillBorderClass(dueDate: string, status: string): string {
+  if (status === "paid") return "";
+  if (status === "overdue") return "border-l-2 border-l-red-500 pl-3";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + "T12:00:00");
+  due.setHours(0, 0, 0, 0);
+  const diffMs = due.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) return "border-l-2 border-l-red-500 pl-3";
+  if (diffDays === 0) return "border-l-2 border-l-yellow-400 pl-3";
+  if (diffDays === 1) return "border-l-2 border-l-orange-400 pl-3";
+  return "";
+}
+
 export default function BillsPage() {
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -541,10 +578,12 @@ export default function BillsPage() {
         <div className="space-y-1">
           {filtered.map((b) => {
             const projected = isProjectedBill(b);
+            const dateLabel = getDueDateLabel(b.due_date, b.status);
+            const borderClass = getBillBorderClass(b.due_date, b.status);
             return (
               <div
                 key={b.id}
-                className={`flex items-center justify-between py-3 glass-divider ${projected ? "opacity-55" : ""}`}
+                className={`flex items-center justify-between py-3 glass-divider ${projected ? "opacity-55" : ""} ${borderClass}`}
               >
                 <button
                   onClick={() => openEdit(b)}
@@ -566,8 +605,8 @@ export default function BillsPage() {
                     )}
                     <Pencil size={12} className="text-white/20 flex-shrink-0" />
                   </div>
-                  <p className="text-xs text-white/30 mt-0.5">
-                    Vence em {formatDate(b.due_date)} · {b.type === "payable" ? "A pagar" : "A receber"}
+                  <p className={`text-xs mt-0.5 ${dateLabel.color}`}>
+                    {dateLabel.text} · {b.type === "payable" ? "A pagar" : "A receber"}
                   </p>
                 </button>
                 <div className="flex items-center gap-3 flex-shrink-0 ml-3">

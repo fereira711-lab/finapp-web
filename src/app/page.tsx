@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getCategoryConfig } from "@/lib/categories";
+import { useBillAlerts } from "@/lib/useBillAlerts";
 import type { Transaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
-import { Wallet, TrendingUp, TrendingDown, Clock } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, Clock, AlertTriangle } from "lucide-react";
 import {
   PieChart,
   Pie,
@@ -44,6 +46,7 @@ export default function DashboardPage() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const alerts = useBillAlerts();
 
   useEffect(() => {
     async function load() {
@@ -190,6 +193,37 @@ export default function DashboardPage() {
               color="text-yellow-400"
             />
           </div>
+
+          {/* Alertas de vencimento */}
+          {!alerts.loading && (alerts.overdue.length > 0 || alerts.today.length > 0 || alerts.tomorrow.length > 0) && (
+            <Link href="/bills" className="block">
+              <div className="glass-card p-4 space-y-2" style={{ borderColor: alerts.overdue.length > 0 ? "rgba(239,68,68,0.5)" : "rgba(234,179,8,0.5)" }}>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={16} className={alerts.overdue.length > 0 ? "text-red-400" : "text-yellow-400"} />
+                  <span className="text-sm font-semibold">
+                    {alerts.overdue.length + alerts.today.length + alerts.tomorrow.length} conta(s) precisam de atenção
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {alerts.overdue.map((b) => (
+                    <p key={b.id} className="text-xs text-red-400">
+                      Atrasada: {b.description} — {formatCurrency(b.amount)}
+                    </p>
+                  ))}
+                  {alerts.today.map((b) => (
+                    <p key={b.id} className="text-xs text-yellow-400">
+                      Vence hoje: {b.description} — {formatCurrency(b.amount)}
+                    </p>
+                  ))}
+                  {alerts.tomorrow.map((b) => (
+                    <p key={b.id} className="text-xs text-orange-400">
+                      Vence amanhã: {b.description} — {formatCurrency(b.amount)}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </Link>
+          )}
 
           {/* Charts */}
           <div className="space-y-4">
