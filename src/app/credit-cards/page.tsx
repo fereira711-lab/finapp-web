@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/format";
 import type { CreditCard, CardTransaction } from "@/lib/types";
-import { CATEGORY_CONFIG } from "@/lib/categories";
+import { getCategoryConfig } from "@/lib/categories";
+import { useCategories } from "@/lib/useCategories";
 import AppShell from "@/components/AppShell";
 import {
   Plus,
@@ -74,6 +75,11 @@ export default function CreditCardsPage() {
   const [deleteTxIsInstallment, setDeleteTxIsInstallment] = useState(false);
 
   const [toast, setToast] = useState<string | null>(null);
+
+  // Dynamic categories
+  const { categories, addCategory } = useCategories();
+  const [showNewCatModal, setShowNewCatModal] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
 
   function showToast(msg: string) {
     setToast(msg);
@@ -210,7 +216,8 @@ export default function CreditCardsPage() {
     setTxAmount(String(tx.amount));
     setTxDate(tx.date);
     const cat = tx.category;
-    if (CATEGORY_CONFIG[cat]) {
+    const knownCat = categories.find((c) => c.name === cat);
+    if (knownCat) {
       setTxCategory(cat); setTxCustomCategory("");
     } else {
       setTxCategory("_custom"); setTxCustomCategory(cat);
@@ -548,7 +555,7 @@ export default function CreditCardsPage() {
           ) : (
             <div className="space-y-1">
               {transactions.map((tx) => {
-                const catConfig = CATEGORY_CONFIG[tx.category] || CATEGORY_CONFIG.outros;
+                const catConfig = getCategoryConfig(tx.category);
                 const CatIcon = catConfig.icon;
                 return (
                   <div key={tx.id} className="flex items-center justify-between py-3 glass-divider">
@@ -675,12 +682,17 @@ export default function CreditCardsPage() {
             <div>
               <label className="label-upper block mb-1">Categoria</label>
               <select value={txCategory}
-                onChange={(e) => { setTxCategory(e.target.value); if (e.target.value !== "_custom") setTxCustomCategory(""); }}
+                onChange={(e) => {
+                  if (e.target.value === "__add__") { setShowNewCatModal(true); return; }
+                  setTxCategory(e.target.value);
+                  if (e.target.value !== "_custom") setTxCustomCategory("");
+                }}
                 className="w-full glass-input px-3 py-3 text-base text-white">
-                {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
-                  <option key={key} value={key} className="bg-[#1a1a2e]">{cfg.label}</option>
+                {categories.map((c) => (
+                  <option key={c.name} value={c.name} className="bg-[#1a1a2e]">{c.label}</option>
                 ))}
                 <option value="_custom" className="bg-[#1a1a2e]">Digitar manualmente...</option>
+                <option value="__add__" className="bg-[#1a1a2e]">+ Adicionar categoria</option>
               </select>
               {txCategory === "_custom" && (
                 <input required value={txCustomCategory} onChange={(e) => setTxCustomCategory(e.target.value)}
@@ -771,6 +783,41 @@ export default function CreditCardsPage() {
               </>
             )}
             <button onClick={() => setShowDeleteConfirm(false)} className="w-full text-white/40 text-sm py-2">Cancelar</button>
+          </div>
+        </div>
+      )}
+      {/* Modal: Nova Categoria */}
+      {showNewCatModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[70] flex items-center justify-center p-4"
+          onClick={() => setShowNewCatModal(false)}>
+          <div className="glass w-full max-w-sm p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold">Nova Categoria</h2>
+              <button onClick={() => setShowNewCatModal(false)} className="text-white/40 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            <div>
+              <label className="label-upper mb-1 block">Nome</label>
+              <input type="text" value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="Ex: Assinaturas, Pet..."
+                className="glass-input w-full px-3 py-2 text-sm text-white"
+                onKeyDown={(e) => e.key === "Enter" && (async () => {
+                  if (!newCatName.trim()) return;
+                  const cat = await addCategory(newCatName);
+                  if (cat) setTxCategory(cat.name);
+                  setNewCatName(""); setShowNewCatModal(false);
+                })()}
+                autoFocus />
+            </div>
+            <button onClick={async () => {
+              if (!newCatName.trim()) return;
+              const cat = await addCategory(newCatName);
+              if (cat) setTxCategory(cat.name);
+              setNewCatName(""); setShowNewCatModal(false);
+            }} className="glass-btn-active w-full py-2.5 text-sm font-medium">
+              Adicionar
+            </button>
           </div>
         </div>
       )}

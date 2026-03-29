@@ -8,6 +8,7 @@ import {
   Banknote,
   TrendingUp,
   MoreHorizontal,
+  Package,
 } from "lucide-react";
 
 export const CATEGORY_CONFIG: Record<
@@ -25,6 +26,14 @@ export const CATEGORY_CONFIG: Record<
   outros: { label: "Outros", color: "#94A3B8", icon: MoreHorizontal },
 };
 
+const FALLBACK_CATEGORY = { label: "Outros", color: "#94A3B8", icon: Package };
+
 export function getCategoryConfig(key: string) {
-  return CATEGORY_CONFIG[key] || CATEGORY_CONFIG.outros;
+  if (CATEGORY_CONFIG[key]) return CATEGORY_CONFIG[key];
+  // Dynamic category fallback — capitalize name, use generic icon/color
+  return {
+    label: key.charAt(0).toUpperCase() + key.slice(1),
+    color: "#6366F1",
+    icon: Package,
+  };
 }

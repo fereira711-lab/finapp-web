@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/format";
-import { getCategoryConfig, CATEGORY_CONFIG } from "@/lib/categories";
+import { getCategoryConfig } from "@/lib/categories";
+import { useCategories } from "@/lib/useCategories";
 import type { Goal } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import { Target, Plus, Pencil, Trash2, X } from "lucide-react";
@@ -12,7 +13,7 @@ interface GoalWithSpent extends Goal {
   spent: number;
 }
 
-const EXPENSE_CATEGORIES = [
+const EXPENSE_CATEGORY_NAMES = [
   "alimentacao", "transporte", "lazer", "saude", "moradia", "educacao", "outros",
 ];
 
@@ -24,7 +25,14 @@ export default function GoalsPage() {
   const [formCategory, setFormCategory] = useState("");
   const [formLimit, setFormLimit] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [customCategory, setCustomCategory] = useState("");
+  const { categories, addCategory } = useCategories();
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+
+  // Expense categories from dynamic list (exclude salario, investimento)
+  const expenseCategories = categories.filter(
+    (c) => c.name !== "salario" && c.name !== "investimento"
+  );
 
   async function loadGoals() {
     const supabase = createClient();
@@ -68,26 +76,27 @@ export default function GoalsPage() {
 
   useEffect(() => { loadGoals(); }, []);
 
+  const usedCategories = goals.map((g) => g.category);
+  const availableCategories = editingGoal
+    ? expenseCategories
+    : expenseCategories.filter((c) => !usedCategories.includes(c.name));
+
   function openCreate() {
     setEditingGoal(null);
-    setFormCategory(availableCategories.length > 0 ? availableCategories[0] : "__custom__");
-    setCustomCategory("");
+    setFormCategory(availableCategories.length > 0 ? availableCategories[0].name : "");
     setFormLimit("");
     setShowForm(true);
   }
 
   function openEdit(g: GoalWithSpent) {
     setEditingGoal(g);
-    const isKnown = EXPENSE_CATEGORIES.includes(g.category);
-    setFormCategory(isKnown ? g.category : "__custom__");
-    setCustomCategory(isKnown ? "" : g.category);
+    setFormCategory(g.category);
     setFormLimit(String(g.monthly_limit));
     setShowForm(true);
   }
 
   async function handleSave() {
-    const finalCategory = formCategory === "__custom__" ? customCategory.trim().toLowerCase() : formCategory;
-    if (!finalCategory || !formLimit) return;
+    if (!formCategory || !formLimit) return;
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -96,11 +105,11 @@ export default function GoalsPage() {
     if (isNaN(limit) || limit <= 0) return;
 
     if (editingGoal) {
-      await supabase.from("goals").update({ category: finalCategory, monthly_limit: limit })
+      await supabase.from("goals").update({ category: formCategory, monthly_limit: limit })
         .eq("id", editingGoal.id);
     } else {
       await supabase.from("goals").upsert({
-        user_id: user.id, category: finalCategory, monthly_limit: limit,
+        user_id: user.id, category: formCategory, monthly_limit: limit,
       }, { onConflict: "user_id,category" });
     }
 
@@ -115,6 +124,14 @@ export default function GoalsPage() {
     loadGoals();
   }
 
+  async function handleAddCategory() {
+    if (!newCatName.trim()) return;
+    const cat = await addCategory(newCatName);
+    if (cat) setFormCategory(cat.name);
+    setNewCatName("");
+    setShowNewCat(false);
+  }
+
   function getProgressColor(pct: number) {
     if (pct > 100) return "bg-red-500";
     if (pct >= 70) return "bg-yellow-500";
@@ -126,11 +143,6 @@ export default function GoalsPage() {
     if (pct >= 70) return "text-yellow-400";
     return "text-green-400";
   }
-
-  const usedCategories = goals.map((g) => g.category);
-  const availableCategories = editingGoal
-    ? EXPENSE_CATEGORIES
-    : EXPENSE_CATEGORIES.filter((c) => !usedCategories.includes(c));
 
   return (
     <AppShell>
@@ -192,10 +204,8 @@ export default function GoalsPage() {
 
                     {/* Progress Bar */}
                     <div className="w-full h-2 rounded-full bg-white/10">
-                      <div
-                        className={`h-full rounded-full transition-all ${getProgressColor(pct)}`}
-                        style={{ width: `${barWidth}%` }}
-                      />
+                      <div className={`h-full rounded-full transition-all ${getProgressColor(pct)}`}
+                        style={{ width: `${barWidth}%` }} />
                     </div>
 
                     {pct >= 80 && (
@@ -226,46 +236,62 @@ export default function GoalsPage() {
                     <label className="label-upper mb-1 block">Categoria</label>
                     <select
                       value={formCategory}
-                      onChange={(e) => { setFormCategory(e.target.value); if (e.target.value !== "__custom__") setCustomCategory(""); }}
+                      onChange={(e) => {
+                        if (e.target.value === "__add__") { setShowNewCat(true); return; }
+                        setFormCategory(e.target.value);
+                      }}
                       className="glass-input w-full px-3 py-2 text-sm"
                       style={{ background: "#1E293B", color: "white" }}
                     >
-                      {(editingGoal ? EXPENSE_CATEGORIES : availableCategories).map((c) => (
-                        <option key={c} value={c} style={{ background: "#1E293B", color: "white" }}>
-                          {getCategoryConfig(c).label}
+                      {(editingGoal ? expenseCategories : availableCategories).map((c) => (
+                        <option key={c.name} value={c.name} style={{ background: "#1E293B", color: "white" }}>
+                          {c.label}
                         </option>
                       ))}
-                      <option value="__custom__" style={{ background: "#1E293B", color: "white" }}>
-                        Personalizada...
+                      <option value="__add__" style={{ background: "#1E293B", color: "white" }}>
+                        + Adicionar categoria
                       </option>
                     </select>
-                    {formCategory === "__custom__" && (
-                      <input
-                        type="text"
-                        value={customCategory}
-                        onChange={(e) => setCustomCategory(e.target.value)}
-                        placeholder="Nome da categoria"
-                        className="glass-input w-full px-3 py-2 text-sm mt-2"
-                      />
-                    )}
                   </div>
 
                   <div>
                     <label className="label-upper mb-1 block">Limite Mensal (R$)</label>
                     <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formLimit}
-                      onChange={(e) => setFormLimit(e.target.value)}
-                      placeholder="500.00"
-                      className="glass-input w-full px-3 py-2 text-sm"
+                      type="number" step="0.01" min="0"
+                      value={formLimit} onChange={(e) => setFormLimit(e.target.value)}
+                      placeholder="500.00" className="glass-input w-full px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
 
                 <button onClick={handleSave} className="glass-btn-active w-full py-2.5 text-sm font-medium">
                   {editingGoal ? "Salvar" : "Criar Meta"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Modal: Nova Categoria (inline from goals) */}
+          {showNewCat && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+              onClick={() => setShowNewCat(false)}>
+              <div className="glass w-full max-w-sm p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold">Nova Categoria</h2>
+                  <button onClick={() => setShowNewCat(false)} className="text-white/40 hover:text-white">
+                    <X size={18} />
+                  </button>
+                </div>
+                <div>
+                  <label className="label-upper mb-1 block">Nome</label>
+                  <input type="text" value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="Ex: Assinaturas, Pet..."
+                    className="glass-input w-full px-3 py-2 text-sm text-white"
+                    onKeyDown={(e) => e.key === "Enter" && handleAddCategory()}
+                    autoFocus />
+                </div>
+                <button onClick={handleAddCategory} className="glass-btn-active w-full py-2.5 text-sm font-medium">
+                  Adicionar
                 </button>
               </div>
             </div>

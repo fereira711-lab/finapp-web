@@ -215,6 +215,7 @@ export default function BillsPage() {
       }
     }
 
+    regular.sort((a, b) => a.due_date.localeCompare(b.due_date));
     return { regularBills: regular, cardGroups: Object.values(cardMap) };
   }, [bills]);
 
@@ -377,7 +378,7 @@ export default function BillsPage() {
       </div>
 
       {/* Resumo */}
-      <div className="grid grid-cols-3 gap-3 mb-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
         <div className="glass-card p-3">
           <div className="flex items-center gap-1.5 mb-1"><TrendingDown size={12} className="text-red-400" /><p className="label-upper">A Pagar</p></div>
           <p className="text-lg font-bold text-red-400">{formatCurrency(totalPayable)}</p>
@@ -543,10 +544,10 @@ export default function BillsPage() {
       )}
 
       {/* Filtros */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
         {STATUS_FILTERS.map((f) => (
           <button key={f.key} onClick={() => setFilter(f.key)}
-            className={`px-3 py-2 rounded-xl text-xs uppercase tracking-wider whitespace-nowrap transition-all ${
+            className={`px-3 py-2 rounded-xl text-xs uppercase tracking-wider whitespace-nowrap transition-all flex-shrink-0 ${
               filter === f.key ? "glass-btn-active text-white" : "glass-btn text-white/45"
             }`}>
             {f.label}
