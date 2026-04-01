@@ -215,8 +215,28 @@ export default function BillsPage() {
       }
     }
 
-    regular.sort((a, b) => a.due_date.localeCompare(b.due_date));
-    return { regularBills: regular, cardGroups: Object.values(cardMap) };
+    // Ordenação: 1) atrasadas (data cresc), 2) pendentes (data cresc), 3) pagas (data decresc)
+    const statusOrder: Record<string, number> = { overdue: 0, pending: 1, paid: 2 };
+    regular.sort((a, b) => {
+      const sa = statusOrder[a.status] ?? 1;
+      const sb = statusOrder[b.status] ?? 1;
+      if (sa !== sb) return sa - sb;
+      // Pagas: data decrescente; demais: data crescente
+      if (a.status === "paid") return b.due_date.localeCompare(a.due_date);
+      return a.due_date.localeCompare(b.due_date);
+    });
+
+    // Mesma ordenação para grupos de cartão
+    const cardGroupList = Object.values(cardMap);
+    cardGroupList.sort((a, b) => {
+      const sa = statusOrder[a.status] ?? 1;
+      const sb = statusOrder[b.status] ?? 1;
+      if (sa !== sb) return sa - sb;
+      if (a.status === "paid") return b.dueDate.localeCompare(a.dueDate);
+      return a.dueDate.localeCompare(b.dueDate);
+    });
+
+    return { regularBills: regular, cardGroups: cardGroupList };
   }, [bills]);
 
   // Apply filter
