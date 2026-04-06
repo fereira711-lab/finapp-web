@@ -244,9 +244,10 @@ export default function BillsPage() {
   const filteredCardGroups = cardGroups.filter((g) => filter === "all" || g.status === filter);
 
   // Totals — use regular bills + card group totals (avoids double counting)
-  const totalPayable = regularBills.filter((b) => b.type === "payable").reduce((s, b) => s + b.amount, 0)
-    + cardGroups.reduce((s, g) => s + g.totalAmount, 0);
-  const totalReceivable = regularBills.filter((b) => b.type === "receivable").reduce((s, b) => s + b.amount, 0);
+  // BUG FIX #2: Excluir contas pagas do total "A PAGAR"
+  const totalPayable = regularBills.filter((b) => b.type === "payable" && b.status !== "paid").reduce((s, b) => s + b.amount, 0)
+    + cardGroups.filter((g) => g.status !== "paid").reduce((s, g) => s + g.totalAmount, 0);
+  const totalReceivable = regularBills.filter((b) => b.type === "receivable" && b.status !== "paid").reduce((s, b) => s + b.amount, 0);
   const balance = totalReceivable - totalPayable;
 
   const allBillStatuses = [...regularBills.map((b) => b.status), ...cardGroups.map((g) => g.status)];
@@ -314,12 +315,22 @@ export default function BillsPage() {
     const parsedAmount = parseFloat(amount);
     const recurrenceDay = recurrent ? new Date(dueDate + "T12:00:00").getDate() : null;
 
-    const billData = {
+    let billData = {
       description: desc.trim(), amount: parsedAmount, due_date: dueDate,
       type, status, recurrent, recurrence_day: recurrenceDay, notes: notes.trim() || null,
     };
 
+    // BUG FIX #1: Recalcular status ao editar due_date
     if (editingId) {
+      const today = new Date().toISOString().split("T")[0];
+      // Se a nova due_date é futura e status é 'overdue', mudar para 'pending'
+      if (status === "overdue" && dueDate >= today) {
+        billData.status = "pending";
+      }
+      // Se a nova due_date é passada e status é 'pending', mudar para 'overdue'
+      if (status === "pending" && dueDate < today) {
+        billData.status = "overdue";
+      }
       await supabase.from("bills").update(billData).eq("id", editingId);
     } else {
       const today = new Date().toISOString().split("T")[0];
@@ -355,7 +366,9 @@ export default function BillsPage() {
     setMarkingId(id);
     const supabase = createClient();
     await supabase.from("bills").update({ status: "paid" }).eq("id", id);
-    setBills((prev) => prev.map((b) => (b.id === id ? { ...b, status: "paid" as const } : b)));
+    // BUG FIX #3: Recarregar dados para aplicar ordenação corretamente
+    setLoading(true);
+    load();
     setMarkingId(null);
   }
 
@@ -364,7 +377,9 @@ export default function BillsPage() {
     const supabase = createClient();
     const ids = group.bills.map((b) => b.id);
     await supabase.from("bills").update({ status: "paid" }).in("id", ids);
-    setBills((prev) => prev.map((b) => ids.includes(b.id) ? { ...b, status: "paid" as const } : b));
+    // BUG FIX #3: Recarregar dados para aplicar ordenação corretamente
+    setLoading(true);
+    load();
     setMarkingId(null);
   }
 
