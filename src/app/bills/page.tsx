@@ -395,7 +395,10 @@ export default function BillsPage() {
     setMarkingId(group.cardId);
     const supabase = createClient();
     const ids = group.bills.map((b) => b.id);
+    // Atualizar status das bills
     await supabase.from("bills").update({ status: "paid" }).in("id", ids);
+    // Atualizar status do cartão de crédito também
+    await supabase.from("credit_cards").update({ status: "paid" }).eq("id", group.cardId);
     // BUG FIX #3: Recarregar dados para aplicar ordenação corretamente
     setLoading(true);
     load();

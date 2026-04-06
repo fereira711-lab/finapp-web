@@ -47,6 +47,7 @@ export interface CreditCard {
   closing_day: number;
   due_day: number;
   color: string;
+  status: "pending" | "paid" | "overdue";
   created_at: string;
 }
 
