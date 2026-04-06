@@ -190,7 +190,7 @@ export default function BillsPage() {
   useEffect(() => { setLoading(true); load(); }, [load]);
 
   // Separate regular bills from card bills, then group card bills by cardId
-  const { regularBills, cardGroups } = useMemo(() => {
+  const { regularBills, cardGroups, allItems } = useMemo(() => {
     const regular: Bill[] = [];
     const cardMap: Record<string, CardBillGroup> = {};
 
@@ -217,31 +217,50 @@ export default function BillsPage() {
 
     // Ordenação: 1) atrasadas (data cresc), 2) pendentes (data cresc), 3) pagas (data decresc)
     const statusOrder: Record<string, number> = { overdue: 0, pending: 1, paid: 2 };
-    regular.sort((a, b) => {
-      const sa = statusOrder[a.status] ?? 1;
-      const sb = statusOrder[b.status] ?? 1;
-      if (sa !== sb) return sa - sb;
-      // Pagas: data decrescente; demais: data crescente
-      if (a.status === "paid") return b.due_date.localeCompare(a.due_date);
-      return a.due_date.localeCompare(b.due_date);
-    });
 
-    // Mesma ordenação para grupos de cartão
+    // Comparador comum para ordenação
+    const compareItems = (aStatus: string, aDate: string, bStatus: string, bDate: string) => {
+      const sa = statusOrder[aStatus] ?? 1;
+      const sb = statusOrder[bStatus] ?? 1;
+      if (sa !== sb) return sa - sb;
+      if (aStatus === "paid") return bDate.localeCompare(aDate);
+      return aDate.localeCompare(bDate);
+    };
+
+    regular.sort((a, b) => compareItems(a.status, a.due_date, b.status, b.due_date));
+
     const cardGroupList = Object.values(cardMap);
-    cardGroupList.sort((a, b) => {
-      const sa = statusOrder[a.status] ?? 1;
-      const sb = statusOrder[b.status] ?? 1;
-      if (sa !== sb) return sa - sb;
-      if (a.status === "paid") return b.dueDate.localeCompare(a.dueDate);
-      return a.dueDate.localeCompare(b.dueDate);
-    });
+    cardGroupList.sort((a, b) => compareItems(a.status, a.dueDate, b.status, b.dueDate));
 
-    return { regularBills: regular, cardGroups: cardGroupList };
+    // Mesclar em uma única lista ordenada
+    type ListItem = { type: "bill"; data: Bill } | { type: "card"; data: CardBillGroup };
+    const merged: ListItem[] = [];
+
+    let regIdx = 0, cardIdx = 0;
+    while (regIdx < regular.length || cardIdx < cardGroupList.length) {
+      if (regIdx >= regular.length) {
+        merged.push({ type: "card", data: cardGroupList[cardIdx++] });
+      } else if (cardIdx >= cardGroupList.length) {
+        merged.push({ type: "bill", data: regular[regIdx++] });
+      } else {
+        const reg = regular[regIdx];
+        const card = cardGroupList[cardIdx];
+        if (compareItems(reg.status, reg.due_date, card.status, card.dueDate) <= 0) {
+          merged.push({ type: "bill", data: regular[regIdx++] });
+        } else {
+          merged.push({ type: "card", data: cardGroupList[cardIdx++] });
+        }
+      }
+    }
+
+    return { regularBills: regular, cardGroups: cardGroupList, allItems: merged };
   }, [bills]);
 
   // Apply filter
-  const filteredRegular = regularBills.filter((b) => filter === "all" || b.status === filter);
-  const filteredCardGroups = cardGroups.filter((g) => filter === "all" || g.status === filter);
+  const filteredItems = allItems.filter((item) => {
+    if (filter === "all") return true;
+    return item.type === "bill" ? item.data.status === filter : item.data.status === filter;
+  });
 
   // Totals — use regular bills + card group totals (avoids double counting)
   // BUG FIX #2: Excluir contas pagas do total "A PAGAR"
@@ -387,7 +406,7 @@ export default function BillsPage() {
     ? `Serão criadas ${projectionMonths + 1} contas até ${formatDate(getProjectionEndDate(dueDate, projectionMonths))}`
     : null;
 
-  const hasItems = filteredRegular.length > 0 || filteredCardGroups.length > 0;
+  const hasItems = filteredItems.length > 0;
 
   return (
     <AppShell>
@@ -597,91 +616,91 @@ export default function BillsPage() {
         <p className="text-white/30">Nenhuma conta encontrada.</p>
       ) : (
         <div className="space-y-1">
-          {/* Card groups */}
-          {filteredCardGroups.map((group) => {
-            const dateLabel = getDueDateLabel(group.dueDate, group.status);
-            const borderClass = getBillBorderClass(group.dueDate, group.status);
-            return (
-              <div key={group.cardId}
-                className={`flex items-center justify-between py-3 glass-divider ${borderClass}`}>
-                <button onClick={() => openCardDetail(group)} className="min-w-0 flex-1 text-left">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <CreditCard size={14} className="text-[#6366F1] flex-shrink-0" />
-                    <p className="font-medium text-sm truncate">{group.cardName}</p>
-                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/10 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
-                      Cartao
-                    </span>
-                    <ChevronDown size={12} className="text-white/20 flex-shrink-0" />
-                  </div>
-                  <p className="text-[11px] text-white/40 mt-0.5">
-                    {group.count} lancamento{group.count > 1 ? "s" : ""} · <span className={dateLabel.color}>{dateLabel.text}</span>
-                  </p>
-                </button>
-                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                  <div className="text-right">
-                    <span className="font-bold text-sm text-white">-{formatCurrency(group.totalAmount)}</span>
-                    <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[group.status]}`}>
-                      {statusLabel[group.status]}
-                    </span>
-                  </div>
-                  {(group.status === "pending" || group.status === "overdue") && (
-                    <button onClick={() => markCardGroupAsPaid(group)} disabled={markingId === group.cardId}
-                      title="Marcar fatura como paga"
-                      className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50">
-                      <Check size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Regular bills */}
-          {filteredRegular.map((b) => {
-            const projected = isProjectedBill(b);
-            const dateLabel = getDueDateLabel(b.due_date, b.status);
-            const borderClass = getBillBorderClass(b.due_date, b.status);
-            return (
-              <div key={b.id}
-                className={`flex items-center justify-between py-3 glass-divider ${projected ? "opacity-55" : ""} ${borderClass}`}>
-                <button onClick={() => openEdit(b)} className="min-w-0 flex-1 text-left">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium text-sm truncate">{b.description}</p>
-                    {b.recurrent && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
-                        <RefreshCw size={10} /> Recorrente
+          {filteredItems.map((item) => {
+            if (item.type === "card") {
+              const group = item.data;
+              const dateLabel = getDueDateLabel(group.dueDate, group.status);
+              const borderClass = getBillBorderClass(group.dueDate, group.status);
+              return (
+                <div key={group.cardId}
+                  className={`flex items-center justify-between py-3 glass-divider ${borderClass}`}>
+                  <button onClick={() => openCardDetail(group)} className="min-w-0 flex-1 text-left">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CreditCard size={14} className="text-[#6366F1] flex-shrink-0" />
+                      <p className="font-medium text-sm truncate">{group.cardName}</p>
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/10 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
+                        Cartao
                       </span>
-                    )}
-                    {projected && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 text-white/40 text-[10px] uppercase tracking-wider flex-shrink-0">
-                        <CalendarClock size={10} /> Projetado
+                      <ChevronDown size={12} className="text-white/20 flex-shrink-0" />
+                    </div>
+                    <p className="text-[11px] text-white/40 mt-0.5">
+                      {group.count} lancamento{group.count > 1 ? "s" : ""} · <span className={dateLabel.color}>{dateLabel.text}</span>
+                    </p>
+                  </button>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                    <div className="text-right">
+                      <span className="font-bold text-sm text-white">-{formatCurrency(group.totalAmount)}</span>
+                      <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[group.status]}`}>
+                        {statusLabel[group.status]}
                       </span>
+                    </div>
+                    {(group.status === "pending" || group.status === "overdue") && (
+                      <button onClick={() => markCardGroupAsPaid(group)} disabled={markingId === group.cardId}
+                        title="Marcar fatura como paga"
+                        className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50">
+                        <Check size={16} />
+                      </button>
                     )}
-                    <Pencil size={12} className="text-white/20 flex-shrink-0" />
                   </div>
-                  <p className={`text-xs mt-0.5 ${dateLabel.color}`}>
-                    {dateLabel.text} · {b.type === "payable" ? "A pagar" : "A receber"}
-                  </p>
-                </button>
-                <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                  <div className="text-right">
-                    <span className={`font-bold text-sm ${b.type === "receivable" ? "text-green-400" : "text-white"}`}>
-                      {b.type === "receivable" ? "+" : "-"}{formatCurrency(b.amount)}
-                    </span>
-                    <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[b.status]}`}>
-                      {statusLabel[b.status]}
-                    </span>
-                  </div>
-                  {(b.status === "pending" || b.status === "overdue") && (
-                    <button onClick={() => markAsPaid(b.id)} disabled={markingId === b.id}
-                      title="Marcar como pago"
-                      className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50">
-                      <Check size={16} />
-                    </button>
-                  )}
                 </div>
-              </div>
-            );
+              );
+            } else {
+              const b = item.data;
+              const projected = isProjectedBill(b);
+              const dateLabel = getDueDateLabel(b.due_date, b.status);
+              const borderClass = getBillBorderClass(b.due_date, b.status);
+              return (
+                <div key={b.id}
+                  className={`flex items-center justify-between py-3 glass-divider ${projected ? "opacity-55" : ""} ${borderClass}`}>
+                  <button onClick={() => openEdit(b)} className="min-w-0 flex-1 text-left">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-sm truncate">{b.description}</p>
+                      {b.recurrent && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
+                          <RefreshCw size={10} /> Recorrente
+                        </span>
+                      )}
+                      {projected && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 text-white/40 text-[10px] uppercase tracking-wider flex-shrink-0">
+                          <CalendarClock size={10} /> Projetado
+                        </span>
+                      )}
+                      <Pencil size={12} className="text-white/20 flex-shrink-0" />
+                    </div>
+                    <p className={`text-xs mt-0.5 ${dateLabel.color}`}>
+                      {dateLabel.text} · {b.type === "payable" ? "A pagar" : "A receber"}
+                    </p>
+                  </button>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                    <div className="text-right">
+                      <span className={`font-bold text-sm ${b.type === "receivable" ? "text-green-400" : "text-white"}`}>
+                        {b.type === "receivable" ? "+" : "-"}{formatCurrency(b.amount)}
+                      </span>
+                      <span className={`block text-xs px-2 py-0.5 rounded-full mt-1 text-center ${statusColor[b.status]}`}>
+                        {statusLabel[b.status]}
+                      </span>
+                    </div>
+                    {(b.status === "pending" || b.status === "overdue") && (
+                      <button onClick={() => markAsPaid(b.id)} disabled={markingId === b.id}
+                        title="Marcar como pago"
+                        className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50">
+                        <Check size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            }
           })}
         </div>
       )}
