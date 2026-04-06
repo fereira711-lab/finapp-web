@@ -49,6 +49,7 @@ export default function CreditCardsPage() {
   const [closingDay, setClosingDay] = useState("5");
   const [dueDay, setDueDay] = useState("15");
   const [cardColor, setCardColor] = useState(CARD_COLORS[0]);
+  const [cardStatus, setCardStatus] = useState<"pending" | "paid" | "overdue">("pending");
   const [savingCard, setSavingCard] = useState(false);
 
   // Transaction form (create + edit)
@@ -148,13 +149,13 @@ export default function CreditCardsPage() {
   // === Card form ===
   function resetCardForm() {
     setCardName(""); setCreditLimit(""); setClosingDay("5"); setDueDay("15");
-    setCardColor(CARD_COLORS[0]); setEditingCardId(null);
+    setCardColor(CARD_COLORS[0]); setCardStatus("pending"); setEditingCardId(null);
   }
   function openNewCard() { resetCardForm(); setShowCardForm(true); }
   function openEditCard(card: CreditCard) {
     setEditingCardId(card.id); setCardName(card.name);
     setCreditLimit(String(card.credit_limit)); setClosingDay(String(card.closing_day));
-    setDueDay(String(card.due_day)); setCardColor(card.color); setShowCardForm(true);
+    setDueDay(String(card.due_day)); setCardColor(card.color); setCardStatus(card.status); setShowCardForm(true);
   }
   function closeCardForm() { setShowCardForm(false); resetCardForm(); }
 
@@ -168,6 +169,7 @@ export default function CreditCardsPage() {
       name: cardName.trim(), bank_name: cardName.trim(),
       credit_limit: parseFloat(creditLimit) || 0,
       closing_day: parseInt(closingDay), due_day: parseInt(dueDay), color: cardColor,
+      status: cardStatus,
     };
     if (editingCardId) {
       await supabase.from("credit_cards").update(cardData).eq("id", editingCardId);
@@ -635,6 +637,15 @@ export default function CreditCardsPage() {
                     style={{ backgroundColor: c }} />
                 ))}
               </div>
+            </div>
+            <div>
+              <label className="label-upper block mb-1">Status</label>
+              <select value={cardStatus} onChange={(e) => setCardStatus(e.target.value as "pending" | "paid" | "overdue")}
+                className="w-full glass-input px-3 py-3 text-base text-white">
+                <option value="pending" className="bg-[#1a1a2e]">Pendente</option>
+                <option value="paid" className="bg-[#1a1a2e]">Pago</option>
+                <option value="overdue" className="bg-[#1a1a2e]">Atrasado</option>
+              </select>
             </div>
             <div className="flex gap-3">
               {editingCardId && (
