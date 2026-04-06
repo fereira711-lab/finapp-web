@@ -139,6 +139,7 @@ export default function BillsPage() {
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [creditCards, setCreditCards] = useState<Record<string, { status: "pending" | "paid" | "overdue" }>>({});
 
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
@@ -164,6 +165,7 @@ export default function BillsPage() {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     const endOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
+    // Buscar bills
     const { data } = await supabase
       .from("bills")
       .select("*")
@@ -183,6 +185,18 @@ export default function BillsPage() {
       );
     }
 
+    // Buscar cartões de crédito
+    const { data: cardsData } = await supabase
+      .from("credit_cards")
+      .select("id, status")
+      .eq("user_id", user.id);
+
+    const cardsMap: Record<string, { status: "pending" | "paid" | "overdue" }> = {};
+    (cardsData || []).forEach((card: { id: string; status: "pending" | "paid" | "overdue" }) => {
+      cardsMap[card.id] = { status: card.status };
+    });
+    setCreditCards(cardsMap);
+
     setBills(result);
     setLoading(false);
   }, [selectedYear, selectedMonth]);
@@ -199,17 +213,16 @@ export default function BillsPage() {
         const cardId = getCardIdFromBill(b);
         const cardName = getCardNameFromBill(b);
         if (!cardMap[cardId]) {
+          // Usar status do cartão de crédito se disponível, caso contrário "paid"
+          const cardStatus = creditCards[cardId]?.status || "paid";
           cardMap[cardId] = {
             cardId, cardName, bills: [], totalAmount: 0,
-            dueDate: b.due_date, status: "paid", count: 0,
+            dueDate: b.due_date, status: cardStatus, count: 0,
           };
         }
         cardMap[cardId].bills.push(b);
         cardMap[cardId].totalAmount += b.amount;
         cardMap[cardId].count++;
-        // Group status: overdue if any overdue, pending if any pending, paid if all paid
-        if (b.status === "overdue") cardMap[cardId].status = "overdue";
-        else if (b.status === "pending" && cardMap[cardId].status !== "overdue") cardMap[cardId].status = "pending";
       } else {
         regular.push(b);
       }
@@ -254,7 +267,7 @@ export default function BillsPage() {
     }
 
     return { regularBills: regular, cardGroups: cardGroupList, allItems: merged };
-  }, [bills]);
+  }, [bills, creditCards]);
 
   // Apply filter
   const filteredItems = allItems.filter((item) => {
