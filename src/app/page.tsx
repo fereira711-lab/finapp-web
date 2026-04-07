@@ -22,25 +22,32 @@ interface GoalProgress { category: string; label: string; color: string; spent: 
 
 /* ── Modal: Editar Saldo ─────────────────────────── */
 function BalanceModal({
-  open, currentBalance, onClose, onSave,
+  open, currentBalance, onClose, onSave, receiveDate, onReceiveDateChange,
 }: {
   open: boolean; currentBalance: number; onClose: () => void; onSave: (value: number) => void;
+  receiveDate: string | null; onReceiveDateChange: (date: string | null) => void;
 }) {
   const [value, setValue] = useState("");
+  const [date, setDate] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setValue(currentBalance.toFixed(2).replace(".", ","));
+      setDate(receiveDate || "");
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [open, currentBalance]);
+  }, [open, currentBalance, receiveDate]);
 
   if (!open) return null;
 
   function handleSave() {
     const parsed = parseFloat(value.replace(/\./g, "").replace(",", "."));
-    if (!isNaN(parsed)) onSave(parsed);
+    if (!isNaN(parsed)) {
+      onSave(parsed);
+      if (date) onReceiveDateChange(date);
+      else onReceiveDateChange(null);
+    }
   }
 
   return (
@@ -65,6 +72,15 @@ function BalanceModal({
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
           />
         </div>
+        <div>
+          <label className="label-upper block mb-1">Data de recebimento (opcional)</label>
+          <input
+            type="date"
+            className="glass-input w-full px-3 py-2 text-sm text-white"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </div>
         <button
           onClick={handleSave}
           className="glass-btn-active w-full py-2.5 text-sm font-medium"
@@ -82,6 +98,7 @@ export default function DashboardPage() {
   const [walletAccountId, setWalletAccountId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState(0);
   const [cardTotal, setCardTotal] = useState(0);
+  const [cardCategoryData, setCardCategoryData] = useState<CategoryData[]>([]);
   const [pendingBillsTotal, setPendingBillsTotal] = useState(0);
   const [monthExpenses, setMonthExpenses] = useState<Transaction[]>([]);
   const [pendingBills, setPendingBills] = useState<Bill[]>([]);
@@ -89,6 +106,7 @@ export default function DashboardPage() {
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
   const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
   const [loading, setLoading] = useState(true);
+  const [receiveDate, setReceiveDate] = useState<string | null>(null);
   const alerts = useBillAlerts();
 
   const [showBalanceModal, setShowBalanceModal] = useState(false);
@@ -114,7 +132,7 @@ export default function DashboardPage() {
       supabase.from("accounts").select("id, balance, name").eq("user_id", user.id),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
-      supabase.from("bills").select("amount, type").eq("user_id", user.id).eq("status", "pending")
+      supabase.from("bills").select("amount, type, status").eq("user_id", user.id)
         .gte("due_date", startStr).lte("due_date", endStr),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).order("date", { ascending: false }).limit(5),
@@ -152,12 +170,12 @@ export default function DashboardPage() {
     const cardTxTotal = (cardTxRes.data || []).reduce((s, t) => s + t.amount, 0);
     setCardTotal(cardTxTotal);
 
-    // Contas a pagar pendentes (apenas payable)
+    // Contas a pagar pendentes (apenas payable e status !== paid)
     const allBills = (billsRes.data || []);
-    const payableBills = allBills.filter((b) => b.type === "payable");
+    const payableBills = allBills.filter((b) => b.type === "payable" && b.status !== "paid");
     const totalPending = payableBills.reduce((s, b) => s + b.amount, 0);
     setPendingBillsTotal(totalPending);
-    setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter((b) => b.type === "payable"));
+    setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter((b) => b.type === "payable" && b.status !== "paid"));
 
     // Grafico por categoria (transacoes + cartao)
     const catMap: Record<string, number> = {};
@@ -177,6 +195,20 @@ export default function DashboardPage() {
       }))
       .sort((a, b) => b.value - a.value);
     setCategoryData(pieData);
+
+    // Gráfico APENAS cartão
+    const cardCatMap: Record<string, number> = {};
+    (cardTxCatRes.data || []).forEach((t) => {
+      const cat = t.category || "outros";
+      cardCatMap[cat] = (cardCatMap[cat] || 0) + Math.abs(t.amount);
+    });
+    const cardPieData = Object.entries(cardCatMap)
+      .map(([key, value]) => ({
+        name: getCategoryConfig(key).label, value,
+        color: getCategoryConfig(key).color,
+      }))
+      .sort((a, b) => b.value - a.value);
+    setCardCategoryData(cardPieData);
 
     setRecentTx((recentRes.data as Transaction[]) || []);
 
@@ -227,6 +259,10 @@ export default function DashboardPage() {
     setShowBalanceModal(false);
   }
 
+  function handleReceiveDateChange(date: string | null) {
+    setReceiveDate(date);
+  }
+
   const tooltipStyle = {
     background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)",
     border: "1px solid rgba(255,255,255,0.15)", borderRadius: "12px", color: "#fff",
@@ -241,7 +277,7 @@ export default function DashboardPage() {
           {/* ── 4 Summary Cards (4 cols desktop, 2x2 mobile) ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card title="Saldo Atual" value={formatCurrency(balance)}
-              subtitle="Toque para editar"
+              subtitle={receiveDate ? `Recebe: ${formatDate(receiveDate)}` : "Toque para editar"}
               icon={<Wallet size={16} />} color="text-white"
               onClick={() => setShowBalanceModal(true)} />
             <Card title="Gastos do Mes" value={formatCurrency(totalGastos)}
@@ -272,6 +308,35 @@ export default function DashboardPage() {
                 <span className="text-lg font-bold text-[#6366F1]">{formatCurrency(cardTotal)}</span>
               </div>
             </Link>
+          )}
+
+          {/* Gráfico: Categorias do Cartão */}
+          {cardTotal > 0 && cardCategoryData.length > 0 && (
+            <div className="glass-divider pb-5">
+              <h2 className="label-upper mb-3">Categorias do Cartao</h2>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <ResponsiveContainer width="100%" height={200} className="sm:!w-1/2">
+                  <PieChart>
+                    <Pie data={cardCategoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={75}
+                      dataKey="value" stroke="none">
+                      {cardCategoryData.map((entry, i) => (<Cell key={i} fill={entry.color} />))}
+                    </Pie>
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={tooltipStyle} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="w-full sm:flex-1 space-y-2">
+                  {cardCategoryData.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                        <span className="text-white/60 text-xs">{item.name}</span>
+                      </div>
+                      <span className="text-white/45 text-xs">{formatCurrency(item.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Alertas */}
@@ -418,6 +483,8 @@ export default function DashboardPage() {
         currentBalance={balance}
         onClose={() => setShowBalanceModal(false)}
         onSave={handleSaveBalance}
+        receiveDate={receiveDate}
+        onReceiveDateChange={handleReceiveDateChange}
       />
 
       {/* ── Modal: Gastos do Mes ── */}
