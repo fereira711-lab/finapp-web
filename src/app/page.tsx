@@ -156,6 +156,7 @@ export default function DashboardPage() {
   const [pendingBillsTotal, setPendingBillsTotal] = useState(0);
   const [monthExpenses, setMonthExpenses] = useState<Transaction[]>([]);
   const [pendingBills, setPendingBills] = useState<Bill[]>([]);
+  const [pendingCardItems, setPendingCardItems] = useState<Array<{ name: string; amount: number; dueDay: number }>>([]);
   const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
   const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
@@ -166,8 +167,10 @@ export default function DashboardPage() {
   const [showBalanceModal, setShowBalanceModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
 
-  // Valor Final = Saldo Atual - Contas a Pagar Pendentes
-  const valorFinal = balance - pendingBillsTotal;
+  // Valor Final = Saldo Atual (com recebimentos) - Contas a Pagar Pendentes
+  const totalToReceive = receiveDates.reduce((s, d) => s + d.amount, 0);
+  const balanceWithReceive = balance + totalToReceive;
+  const valorFinal = balanceWithReceive - pendingBillsTotal;
 
   async function loadDashboard() {
     const supabase = createClient();
@@ -237,13 +240,34 @@ export default function DashboardPage() {
 
     // Cartões a pagar (apenas os com status "pending" ou "overdue")
     const unpaidCards = creditCards.filter((c) => c.status === "pending" || c.status === "overdue");
-    const cartaoPayable = cardTxData
-      .filter((t) => unpaidCards.map((c) => c.id).includes(t.card_id))
-      .reduce((s, t) => s + t.amount, 0);
+    const unpaidCardIds2 = unpaidCards.map((c) => c.id);
+
+    // Agrupar transações por cartão para exibir no modal
+    const cardAmounts: Record<string, number> = {};
+    cardTxData.forEach((t) => {
+      if (unpaidCardIds2.includes(t.card_id)) {
+        cardAmounts[t.card_id] = (cardAmounts[t.card_id] || 0) + t.amount;
+      }
+    });
+
+    // Buscar nomes dos cartões
+    const { data: cardNamesData } = await supabase
+      .from("credit_cards")
+      .select("id, name, due_day")
+      .in("id", unpaidCardIds2);
+
+    const cardItems = (cardNamesData || []).map((c: { id: string; name: string; due_day: number }) => ({
+      name: c.name,
+      amount: cardAmounts[c.id] || 0,
+      dueDay: c.due_day,
+    })).filter((c) => c.amount > 0);
+
+    const cartaoPayable = Object.values(cardAmounts).reduce((s, v) => s + v, 0);
 
     const totalPending = payableBills.reduce((s, b) => s + b.amount, 0) + cartaoPayable;
     setPendingBillsTotal(totalPending);
     setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter((b) => b.type === "payable" && b.status !== "paid"));
+    setPendingCardItems(cardItems);
 
     // Gráfico APENAS cartão (apenas cartões não pagos)
     const cardCatMap: Record<string, number> = {};
@@ -291,6 +315,14 @@ export default function DashboardPage() {
 
   useEffect(() => { loadDashboard(); }, []);
 
+  // Carregar receiveDates do localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("finapp_receive_dates");
+      if (saved) setReceiveDates(JSON.parse(saved));
+    } catch {}
+  }, []);
+
   async function handleSaveBalance(newBalance: number) {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -312,10 +344,10 @@ export default function DashboardPage() {
 
   function handleReceiveDatesChange(dates: Array<{ date: string; amount: number }>) {
     setReceiveDates(dates);
+    try {
+      localStorage.setItem("finapp_receive_dates", JSON.stringify(dates));
+    } catch {}
   }
-
-  const totalToReceive = receiveDates.reduce((s, d) => s + d.amount, 0);
-  const balanceWithReceive = balance + totalToReceive;
 
   const tooltipStyle = {
     background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)",
@@ -519,30 +551,48 @@ export default function DashboardPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {pendingBills.length === 0 ? (
+              {pendingBills.length === 0 && pendingCardItems.length === 0 ? (
                 <p className="text-white/30 text-sm text-center py-6">Nenhuma conta pendente este mes</p>
               ) : (
-                pendingBills.map((b) => {
-                  const dueDate = new Date(b.due_date + "T12:00:00");
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const isOverdue = dueDate < today;
-                  const isToday = dueDate.toDateString() === today.toDateString();
-                  return (
-                    <div key={b.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                <>
+                  {/* Cartões pendentes */}
+                  {pendingCardItems.map((c, i) => (
+                    <div key={`card-${i}`} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                       <div className="min-w-0">
-                        <p className="text-xs font-medium truncate">{b.description}</p>
-                        <p className={`text-[10px] ${isOverdue ? "text-red-400" : "text-white/30"}`}>
-                          {isOverdue ? "Vencida em " : isToday ? "Vence hoje" : "Vence em "}{!isToday && formatDate(b.due_date)}
-                          {isOverdue && <span> · Atrasada</span>}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <CreditCard size={12} className="text-[#6366F1] flex-shrink-0" />
+                          <p className="text-xs font-medium truncate">{c.name}</p>
+                        </div>
+                        <p className="text-[10px] text-white/30">Fatura · Vence dia {c.dueDay}</p>
                       </div>
-                      <span className={`text-xs font-bold flex-shrink-0 ml-2 ${isOverdue ? "text-red-400" : "text-yellow-400"}`}>
-                        {formatCurrency(b.amount)}
+                      <span className="text-xs font-bold flex-shrink-0 ml-2 text-[#6366F1]">
+                        {formatCurrency(c.amount)}
                       </span>
                     </div>
-                  );
-                })
+                  ))}
+                  {/* Contas normais */}
+                  {pendingBills.map((b) => {
+                    const dueDate = new Date(b.due_date + "T12:00:00");
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const isOverdue = dueDate < today;
+                    const isToday = dueDate.toDateString() === today.toDateString();
+                    return (
+                      <div key={b.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{b.description}</p>
+                          <p className={`text-[10px] ${isOverdue ? "text-red-400" : "text-white/30"}`}>
+                            {isOverdue ? "Vencida em " : isToday ? "Vence hoje" : "Vence em "}{!isToday && formatDate(b.due_date)}
+                            {isOverdue && <span> · Atrasada</span>}
+                          </p>
+                        </div>
+                        <span className={`text-xs font-bold flex-shrink-0 ml-2 ${isOverdue ? "text-red-400" : "text-yellow-400"}`}>
+                          {formatCurrency(b.amount)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </>
               )}
             </div>
             <div className="p-4 border-t border-white/10 space-y-3">
