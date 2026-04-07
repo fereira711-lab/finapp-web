@@ -102,26 +102,24 @@ function BalanceModal({
           </div>
           {dates.map((rec, idx) => (
             <div key={idx} className="space-y-2 p-3 glass-card">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-white/60 block mb-1">Data</label>
-                  <input
-                    type="date"
-                    className="glass-input w-full px-2 py-1.5 text-sm text-white"
-                    value={rec.date}
-                    onChange={(e) => updateReceiveDate(idx, "date", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-white/60 block mb-1">Valor</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className="glass-input w-full px-2 py-1.5 text-sm text-white"
-                    value={rec.amount.toFixed(2).replace(".", ",")}
-                    onChange={(e) => updateReceiveDate(idx, "amount", e.target.value)}
-                  />
-                </div>
+              <div>
+                <label className="text-[10px] text-white/60 block mb-1">Data</label>
+                <input
+                  type="date"
+                  className="glass-input w-full px-2 py-1.5 text-sm text-white"
+                  value={rec.date}
+                  onChange={(e) => updateReceiveDate(idx, "date", e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-white/60 block mb-1">Valor</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="glass-input w-full px-2 py-1.5 text-sm text-white"
+                  value={rec.amount.toFixed(2).replace(".", ",")}
+                  onChange={(e) => updateReceiveDate(idx, "amount", e.target.value)}
+                />
               </div>
               <button
                 onClick={() => removeReceiveDate(idx)}
@@ -168,8 +166,8 @@ export default function DashboardPage() {
   const [showBalanceModal, setShowBalanceModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
 
-  const totalGastos = expenses + cardTotal;
-  const valorFinal = balance - totalGastos - pendingBillsTotal;
+  // Valor Final = Saldo Atual - Contas a Pagar Pendentes
+  const valorFinal = balance - pendingBillsTotal;
 
   async function loadDashboard() {
     const supabase = createClient();
@@ -337,11 +335,11 @@ export default function DashboardPage() {
               icon={<Wallet size={16} />} color="text-white"
               onClick={() => setShowBalanceModal(true)} />
             <Card title="Contas a Pagar" value={formatCurrency(pendingBillsTotal)}
-              subtitle={`${pendingBills.length} pendente(s)`}
+              subtitle={`${pendingBills.length} contas pendentes`}
               icon={<FileText size={16} />} color="text-yellow-400"
               onClick={() => setShowPendingModal(true)} />
             <Card title="Valor Final" value={formatCurrency(valorFinal)}
-              subtitle="Saldo − Gastos − Contas"
+              subtitle="Saldo − Contas a Pagar"
               icon={<Calculator size={16} />}
               color={valorFinal >= 0 ? "text-green-400" : "text-red-400"} />
           </div>
