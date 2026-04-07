@@ -39,6 +39,12 @@ function BalanceModal({
     }
   }, [open, currentBalance, receiveDates]);
 
+  // Persiste imediatamente toda mudança em dates
+  useEffect(() => {
+    if (open) onReceiveDatesChange(dates);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dates]);
+
   if (!open) return null;
 
   function handleSave() {
