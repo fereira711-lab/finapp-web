@@ -22,22 +22,22 @@ interface GoalProgress { category: string; label: string; color: string; spent: 
 
 /* ── Modal: Editar Saldo ─────────────────────────── */
 function BalanceModal({
-  open, currentBalance, onClose, onSave, receiveDate, onReceiveDateChange,
+  open, currentBalance, onClose, onSave, receiveDates, onReceiveDatesChange,
 }: {
   open: boolean; currentBalance: number; onClose: () => void; onSave: (value: number) => void;
-  receiveDate: string | null; onReceiveDateChange: (date: string | null) => void;
+  receiveDates: Array<{ date: string; amount: number }>; onReceiveDatesChange: (dates: Array<{ date: string; amount: number }>) => void;
 }) {
   const [value, setValue] = useState("");
-  const [date, setDate] = useState("");
+  const [dates, setDates] = useState<Array<{ date: string; amount: number }>>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setValue(currentBalance.toFixed(2).replace(".", ","));
-      setDate(receiveDate || "");
+      setDates(receiveDates);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [open, currentBalance, receiveDate]);
+  }, [open, currentBalance, receiveDates]);
 
   if (!open) return null;
 
@@ -45,15 +45,31 @@ function BalanceModal({
     const parsed = parseFloat(value.replace(/\./g, "").replace(",", "."));
     if (!isNaN(parsed)) {
       onSave(parsed);
-      if (date) onReceiveDateChange(date);
-      else onReceiveDateChange(null);
+      onReceiveDatesChange(dates);
     }
   }
+
+  function addReceiveDate() {
+    setDates([...dates, { date: "", amount: 0 }]);
+  }
+
+  function removeReceiveDate(idx: number) {
+    setDates(dates.filter((_, i) => i !== idx));
+  }
+
+  function updateReceiveDate(idx: number, field: "date" | "amount", val: string) {
+    const newDates = [...dates];
+    if (field === "date") newDates[idx].date = val;
+    else newDates[idx].amount = parseFloat(val.replace(/\./g, "").replace(",", ".")) || 0;
+    setDates(newDates);
+  }
+
+  const totalReceive = dates.reduce((s, d) => s + d.amount, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="glass w-full max-w-sm p-5 relative z-10 space-y-4">
+      <div className="glass w-full max-w-sm p-5 relative z-10 space-y-4 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold">Atualizar Saldo</h3>
           <button onClick={onClose} className="text-white/40 hover:text-white">
@@ -72,14 +88,49 @@ function BalanceModal({
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
           />
         </div>
-        <div>
-          <label className="label-upper block mb-1">Data de recebimento (opcional)</label>
-          <input
-            type="date"
-            className="glass-input w-full px-3 py-2 text-sm text-white"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="label-upper block">Valores a receber</label>
+            <button onClick={addReceiveDate} className="text-[10px] text-[#6366F1] hover:underline">
+              + Adicionar
+            </button>
+          </div>
+          {dates.map((rec, idx) => (
+            <div key={idx} className="space-y-2 p-3 glass-card">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-white/60 block mb-1">Data</label>
+                  <input
+                    type="date"
+                    className="glass-input w-full px-2 py-1.5 text-sm text-white"
+                    value={rec.date}
+                    onChange={(e) => updateReceiveDate(idx, "date", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-white/60 block mb-1">Valor</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="glass-input w-full px-2 py-1.5 text-sm text-white"
+                    value={rec.amount.toFixed(2).replace(".", ",")}
+                    onChange={(e) => updateReceiveDate(idx, "amount", e.target.value)}
+                  />
+                </div>
+              </div>
+              <button
+                onClick={() => removeReceiveDate(idx)}
+                className="text-xs text-red-400 hover:text-red-300"
+              >
+                Remover
+              </button>
+            </div>
+          ))}
+          {dates.length > 0 && (
+            <p className="text-xs text-white/60 text-center">
+              Total a receber: <span className="text-green-400 font-bold">{formatCurrency(totalReceive)}</span>
+            </p>
+          )}
         </div>
         <button
           onClick={handleSave}
@@ -106,7 +157,7 @@ export default function DashboardPage() {
   const [recentTx, setRecentTx] = useState<Transaction[]>([]);
   const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
   const [loading, setLoading] = useState(true);
-  const [receiveDate, setReceiveDate] = useState<string | null>(null);
+  const [receiveDates, setReceiveDates] = useState<Array<{ date: string; amount: number }>>([]);
   const alerts = useBillAlerts();
 
   const [showBalanceModal, setShowBalanceModal] = useState(false);
@@ -128,7 +179,7 @@ export default function DashboardPage() {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const endStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-    const [accountsRes, monthTxRes, billsRes, recentRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes] = await Promise.all([
+    const [accountsRes, monthTxRes, billsRes, recentRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes, creditCardsRes] = await Promise.all([
       supabase.from("accounts").select("id, balance, name").eq("user_id", user.id),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
@@ -136,15 +187,16 @@ export default function DashboardPage() {
         .gte("due_date", startStr).lte("due_date", endStr),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).order("date", { ascending: false }).limit(5),
-      supabase.from("card_transactions").select("amount, category")
+      supabase.from("card_transactions").select("amount, category, card_id")
         .eq("user_id", user.id).gte("date", startStr).lte("date", endStr),
       supabase.from("goals").select("*").eq("user_id", user.id),
-      supabase.from("card_transactions").select("amount, category")
+      supabase.from("card_transactions").select("amount, category, card_id")
         .eq("user_id", user.id).gte("date", startStr).lte("date", endStr),
       supabase.from("bills").select("*")
-        .eq("user_id", user.id).eq("status", "pending")
+        .eq("user_id", user.id).eq("type", "payable").neq("status", "paid")
         .gte("due_date", startStr).lte("due_date", endStr)
         .order("due_date", { ascending: true }),
+      supabase.from("credit_cards").select("id, status, credit_limit").eq("user_id", user.id),
     ]);
 
     // Saldo — busca conta "Carteira" ou usa soma de todas
@@ -166,8 +218,13 @@ export default function DashboardPage() {
     setExpenses(totalExpenses);
     setMonthExpenses(expTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
-    // Gastos cartao
-    const cardTxTotal = (cardTxRes.data || []).reduce((s, t) => s + t.amount, 0);
+    // Gastos cartao (apenas cartões não pagos)
+    const creditCards = (creditCardsRes.data || []) as Array<{ id: string; status: string }>;
+    const unpaidCardIds = creditCards.filter((c) => c.status !== "paid").map((c) => c.id);
+    const cardTxData = (cardTxRes.data || []) as Array<{ amount: number; card_id: string }>;
+    const cardTxTotal = cardTxData
+      .filter((t) => unpaidCardIds.includes(t.card_id))
+      .reduce((s, t) => s + t.amount, 0);
     setCardTotal(cardTxTotal);
 
     // Contas a pagar pendentes (apenas payable e status !== paid)
@@ -177,30 +234,13 @@ export default function DashboardPage() {
     setPendingBillsTotal(totalPending);
     setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter((b) => b.type === "payable" && b.status !== "paid"));
 
-    // Grafico por categoria (transacoes + cartao)
-    const catMap: Record<string, number> = {};
-    expTx.forEach((t) => {
-      const cat = t.category || "outros";
-      catMap[cat] = (catMap[cat] || 0) + Math.abs(t.amount);
-    });
-    (cardTxCatRes.data || []).forEach((t) => {
-      const cat = t.category || "outros";
-      catMap[cat] = (catMap[cat] || 0) + Math.abs(t.amount);
-    });
-
-    const pieData = Object.entries(catMap)
-      .map(([key, value]) => ({
-        name: getCategoryConfig(key).label, value,
-        color: getCategoryConfig(key).color,
-      }))
-      .sort((a, b) => b.value - a.value);
-    setCategoryData(pieData);
-
-    // Gráfico APENAS cartão
+    // Gráfico APENAS cartão (apenas cartões não pagos)
     const cardCatMap: Record<string, number> = {};
-    (cardTxCatRes.data || []).forEach((t) => {
-      const cat = t.category || "outros";
-      cardCatMap[cat] = (cardCatMap[cat] || 0) + Math.abs(t.amount);
+    (cardTxCatRes.data || []).forEach((t: { amount: number; category: string; card_id: string }) => {
+      if (unpaidCardIds.includes(t.card_id)) {
+        const cat = t.category || "outros";
+        cardCatMap[cat] = (cardCatMap[cat] || 0) + Math.abs(t.amount);
+      }
     });
     const cardPieData = Object.entries(cardCatMap)
       .map(([key, value]) => ({
@@ -259,8 +299,8 @@ export default function DashboardPage() {
     setShowBalanceModal(false);
   }
 
-  function handleReceiveDateChange(date: string | null) {
-    setReceiveDate(date);
+  function handleReceiveDatesChange(dates: Array<{ date: string; amount: number }>) {
+    setReceiveDates(dates);
   }
 
   const tooltipStyle = {
@@ -277,7 +317,7 @@ export default function DashboardPage() {
           {/* ── 4 Summary Cards (4 cols desktop, 2x2 mobile) ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card title="Saldo Atual" value={formatCurrency(balance)}
-              subtitle={receiveDate ? `Recebe: ${formatDate(receiveDate)}` : "Toque para editar"}
+              subtitle={receiveDates.length > 0 ? `Recebe: ${formatCurrency(receiveDates.reduce((s, d) => s + d.amount, 0))}` : "Toque para editar"}
               icon={<Wallet size={16} />} color="text-white"
               onClick={() => setShowBalanceModal(true)} />
             <Card title="Gastos do Mes" value={formatCurrency(totalGastos)}
@@ -412,37 +452,6 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Gastos por Categoria */}
-          <div className="glass-divider pb-5">
-            <h2 className="label-upper mb-3">Gastos por Categoria</h2>
-            {categoryData.length === 0 ? (
-              <p className="text-white/30 text-sm text-center py-6">Sem despesas este mes</p>
-            ) : (
-              <div className="flex flex-col sm:flex-row items-center gap-4">
-                <ResponsiveContainer width="100%" height={200} className="sm:!w-1/2">
-                  <PieChart>
-                    <Pie data={categoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={75}
-                      dataKey="value" stroke="none">
-                      {categoryData.map((entry, i) => (<Cell key={i} fill={entry.color} />))}
-                    </Pie>
-                    <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={tooltipStyle} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="w-full sm:flex-1 space-y-2">
-                  {categoryData.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
-                        <span className="text-white/60 text-xs">{item.name}</span>
-                      </div>
-                      <span className="text-white/45 text-xs">{formatCurrency(item.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Ultimas Transacoes */}
           <div className="glass-divider pt-4">
             <h2 className="label-upper mb-3">Ultimas Transacoes</h2>
@@ -483,8 +492,8 @@ export default function DashboardPage() {
         currentBalance={balance}
         onClose={() => setShowBalanceModal(false)}
         onSave={handleSaveBalance}
-        receiveDate={receiveDate}
-        onReceiveDateChange={handleReceiveDateChange}
+        receiveDates={receiveDates}
+        onReceiveDatesChange={handleReceiveDatesChange}
       />
 
       {/* ── Modal: Gastos do Mes ── */}
