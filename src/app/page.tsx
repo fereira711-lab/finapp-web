@@ -59,8 +59,13 @@ function BalanceModal({
 
   function updateReceiveDate(idx: number, field: "date" | "amount", val: string) {
     const newDates = [...dates];
-    if (field === "date") newDates[idx].date = val;
-    else newDates[idx].amount = parseFloat(val.replace(/\./g, "").replace(",", ".")) || 0;
+    if (field === "date") {
+      newDates[idx].date = val;
+    } else {
+      // Converter qualquer formato para número
+      const numVal = parseFloat(val.replace(/[^\d,.-]/g, "").replace(",", "."));
+      newDates[idx].amount = isNaN(numVal) ? 0 : numVal;
+    }
     setDates(newDates);
   }
 
@@ -161,7 +166,6 @@ export default function DashboardPage() {
   const alerts = useBillAlerts();
 
   const [showBalanceModal, setShowBalanceModal] = useState(false);
-  const [showExpensesModal, setShowExpensesModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
 
   const totalGastos = expenses + cardTotal;
@@ -218,10 +222,12 @@ export default function DashboardPage() {
     setExpenses(totalExpenses);
     setMonthExpenses(expTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
-    // Gastos cartao (apenas cartões não pagos)
+    // Cartões e transações
     const creditCards = (creditCardsRes.data || []) as Array<{ id: string; status: string }>;
-    const unpaidCardIds = creditCards.filter((c) => c.status !== "paid").map((c) => c.id);
     const cardTxData = (cardTxRes.data || []) as Array<{ amount: number; card_id: string }>;
+
+    // Gastos cartao (apenas cartões não pagos)
+    const unpaidCardIds = creditCards.filter((c) => c.status !== "paid").map((c) => c.id);
     const cardTxTotal = cardTxData
       .filter((t) => unpaidCardIds.includes(t.card_id))
       .reduce((s, t) => s + t.amount, 0);
@@ -230,7 +236,14 @@ export default function DashboardPage() {
     // Contas a pagar pendentes (apenas payable e status !== paid)
     const allBills = (billsRes.data || []);
     const payableBills = allBills.filter((b) => b.type === "payable" && b.status !== "paid");
-    const totalPending = payableBills.reduce((s, b) => s + b.amount, 0);
+
+    // Cartões a pagar (apenas os com status "pending" ou "overdue")
+    const unpaidCards = creditCards.filter((c) => c.status === "pending" || c.status === "overdue");
+    const cartaoPayable = cardTxData
+      .filter((t) => unpaidCards.map((c) => c.id).includes(t.card_id))
+      .reduce((s, t) => s + t.amount, 0);
+
+    const totalPending = payableBills.reduce((s, b) => s + b.amount, 0) + cartaoPayable;
     setPendingBillsTotal(totalPending);
     setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter((b) => b.type === "payable" && b.status !== "paid"));
 
@@ -303,6 +316,9 @@ export default function DashboardPage() {
     setReceiveDates(dates);
   }
 
+  const totalToReceive = receiveDates.reduce((s, d) => s + d.amount, 0);
+  const balanceWithReceive = balance + totalToReceive;
+
   const tooltipStyle = {
     background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)",
     border: "1px solid rgba(255,255,255,0.15)", borderRadius: "12px", color: "#fff",
@@ -314,16 +330,12 @@ export default function DashboardPage() {
         <div className="text-white/45">Carregando...</div>
       ) : (
         <div className="space-y-5">
-          {/* ── 4 Summary Cards (4 cols desktop, 2x2 mobile) ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card title="Saldo Atual" value={formatCurrency(balance)}
-              subtitle={receiveDates.length > 0 ? `Recebe: ${formatCurrency(receiveDates.reduce((s, d) => s + d.amount, 0))}` : "Toque para editar"}
+          {/* ── 3 Summary Cards ── */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Card title="Saldo Atual" value={formatCurrency(balanceWithReceive)}
+              subtitle={totalToReceive > 0 ? `+${formatCurrency(totalToReceive)} a receber` : "Toque para editar"}
               icon={<Wallet size={16} />} color="text-white"
               onClick={() => setShowBalanceModal(true)} />
-            <Card title="Gastos do Mes" value={formatCurrency(totalGastos)}
-              subtitle={cardTotal > 0 ? `Debito ${formatCurrency(expenses)} · Cartao ${formatCurrency(cardTotal)}` : `${monthExpenses.length} transacao(oes)`}
-              icon={<TrendingDown size={16} />} color="text-red-400"
-              onClick={() => setShowExpensesModal(true)} />
             <Card title="Contas a Pagar" value={formatCurrency(pendingBillsTotal)}
               subtitle={`${pendingBills.length} pendente(s)`}
               icon={<FileText size={16} />} color="text-yellow-400"
@@ -495,59 +507,6 @@ export default function DashboardPage() {
         receiveDates={receiveDates}
         onReceiveDatesChange={handleReceiveDatesChange}
       />
-
-      {/* ── Modal: Gastos do Mes ── */}
-      {showExpensesModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center"
-          onClick={() => setShowExpensesModal(false)}>
-          <div className="glass w-full max-w-md max-h-[80vh] flex flex-col md:mx-4 md:rounded-2xl rounded-t-2xl rounded-b-none md:rounded-b-2xl"
-            onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <h2 className="text-sm font-bold">Gastos do Mes</h2>
-              <button onClick={() => setShowExpensesModal(false)} className="text-white/40 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {monthExpenses.length === 0 ? (
-                <p className="text-white/30 text-sm text-center py-6">Nenhum gasto este mes</p>
-              ) : (
-                monthExpenses.map((t) => {
-                  const cat = getCategoryConfig(t.category);
-                  const Icon = cat.icon;
-                  return (
-                    <div key={t.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: cat.color + "20" }}>
-                          <Icon size={14} style={{ color: cat.color }} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium truncate">{t.description}</p>
-                          <p className="text-[10px] text-white/30">{formatDate(t.date)} · {cat.label}</p>
-                        </div>
-                      </div>
-                      <span className="text-xs font-bold text-red-400 flex-shrink-0 ml-2">
-                        -{formatCurrency(Math.abs(t.amount))}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            <div className="p-4 border-t border-white/10 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-white/50">Total</span>
-                <span className="font-bold text-red-400">{formatCurrency(totalGastos)}</span>
-              </div>
-              <Link href="/transactions" onClick={() => setShowExpensesModal(false)}
-                className="block text-center glass-btn py-2 text-xs">
-                Ver todas as transacoes
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Modal: Contas Pendentes ── */}
       {showPendingModal && (
