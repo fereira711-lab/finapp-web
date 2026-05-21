@@ -324,13 +324,14 @@ export default function BillsPage() {
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     const endOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
+    // Filtra pelo mes da fatura (bill_date), nao pela data da compra
     const { data: txs } = await supabase
       .from("card_transactions")
       .select("*")
       .eq("card_id", group.cardId)
       .eq("user_id", user.id)
-      .gte("date", startOfMonth)
-      .lte("date", endOfMonth)
+      .gte("bill_date", startOfMonth)
+      .lte("bill_date", endOfMonth)
       .order("date", { ascending: false });
 
     setCardDetailTxs(txs || []);
