@@ -41,6 +41,7 @@ type UnifiedRow = {
   category: string;
   date: string;
   type: "income" | "expense";
+  cardId?: string;
   cardName?: string;
   cardColor?: string;
   installmentLabel?: string;
@@ -49,12 +50,16 @@ type UnifiedRow = {
 export default function TransactionsPage() {
   const [rows, setRows] = useState<UnifiedRow[]>([]);
   const [cards, setCards] = useState<CreditCard[]>([]);
+  const [allCardTxRows, setAllCardTxRows] = useState<UnifiedRow[]>([]);
   const [category, setCategory] = useState("todas");
   const [period, setPeriod] = useState<PeriodValue>("current");
   const [loading, setLoading] = useState(true);
   const { categories, addCategory } = useCategories();
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+
+  // Modal de detalhes do cartao
+  const [detailCardId, setDetailCardId] = useState<string | null>(null);
 
   // Form
   const [showForm, setShowForm] = useState(false);
@@ -123,11 +128,15 @@ export default function TransactionsPage() {
         category: t.category,
         date: t.date,
         type: "expense",
+        cardId: t.card_id,
         cardName: c?.name,
         cardColor: c?.color,
         installmentLabel: t.installments > 1 ? `${t.installment_current}/${t.installments}` : undefined,
       };
     });
+
+    // Guarda lista completa de gastos de cartao do periodo (sem filtro de categoria) para o modal
+    setAllCardTxRows(cardRows);
 
     let merged = [...txRows, ...cardRows].sort((a, b) =>
       new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -360,18 +369,21 @@ export default function TransactionsPage() {
                       <span>{cat.label}</span>
                       <span>·</span>
                       <span>{formatDate(r.date)}</span>
-                      {r.source === "card" && r.cardName && (
+                      {r.source === "card" && r.cardName && r.cardId && (
                         <>
                           <span>·</span>
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium"
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setDetailCardId(r.cardId!); }}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium hover:brightness-125 transition"
                             style={{
                               backgroundColor: (r.cardColor || "#6366F1") + "30",
                               color: r.cardColor || "#6366F1",
                             }}
+                            title="Ver detalhes do cartao"
                           >
                             <CreditCardIcon size={10} /> {r.cardName}
-                          </span>
+                          </button>
                         </>
                       )}
                     </p>
@@ -589,6 +601,100 @@ export default function TransactionsPage() {
           </form>
         </div>
       )}
+
+      {/* Modal: Detalhes do cartao */}
+      {detailCardId && (() => {
+        const card = cards.find((c) => c.id === detailCardId);
+        const txs = allCardTxRows
+          .filter((r) => r.cardId === detailCardId)
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const total = txs.reduce((s, r) => s + r.amount, 0);
+        if (!card) return null;
+
+        const periodLabel = PERIODS.find((p) => p.value === period)?.label || "";
+
+        return (
+          <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center"
+            onClick={() => setDetailCardId(null)}>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="relative glass w-full max-w-md md:mx-4 rounded-t-2xl md:rounded-2xl max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div
+                className="p-5 rounded-t-2xl"
+                style={{ background: `linear-gradient(135deg, ${card.color}, ${card.color}88)` }}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2 text-white">
+                    <CreditCardIcon size={20} />
+                    <div>
+                      <p className="font-bold text-base">{card.name}</p>
+                      <p className="text-[11px] text-white/70">
+                        Fecha dia {card.closing_day} · Vence dia {card.due_day}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setDetailCardId(null)}
+                    className="text-white/70 hover:text-white p-1"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <p className="text-white/70 text-[10px] uppercase tracking-wider mb-0.5">
+                  Total {periodLabel.toLowerCase()}
+                </p>
+                <p className="text-white text-2xl font-bold">{formatCurrency(total)}</p>
+                <p className="text-white/70 text-[11px] mt-0.5">
+                  {txs.length} {txs.length === 1 ? "lançamento" : "lançamentos"}
+                </p>
+              </div>
+
+              {/* Lista de transacoes */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-1">
+                {txs.length === 0 ? (
+                  <p className="text-white/30 text-sm text-center py-8">
+                    Nenhum lançamento neste período
+                  </p>
+                ) : (
+                  txs.map((tx) => {
+                    const cat = getCategoryConfig(tx.category);
+                    const Icon = cat.icon;
+                    return (
+                      <div key={tx.id} className="flex items-center justify-between py-2.5 glass-divider">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: cat.color + "20" }}
+                          >
+                            <Icon size={14} style={{ color: cat.color }} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {tx.description}
+                              {tx.installmentLabel && (
+                                <span className="text-white/40 ml-1 text-xs">
+                                  {tx.installmentLabel}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-white/30">
+                              {cat.label} · {formatDate(tx.date)}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="font-bold text-sm text-red-400 flex-shrink-0 ml-3">
+                          {formatCurrency(tx.amount)}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal: Nova Categoria */}
       {showNewCat && (
