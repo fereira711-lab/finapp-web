@@ -6,12 +6,15 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getCategoryConfig, CATEGORY_CONFIG } from "@/lib/categories";
 import { useBillAlerts } from "@/lib/useBillAlerts";
+import { useCategories } from "@/lib/useCategories";
+import { computeBilling, addMonths } from "@/lib/cardBilling";
 import type { Transaction, Bill } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
 import {
   Wallet, TrendingDown, FileText, Calculator,
   AlertTriangle, CreditCard, Target, X,
+  ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Layers,
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -19,6 +22,18 @@ import {
 
 interface CategoryData { name: string; value: number; color: string; }
 interface GoalProgress { category: string; label: string; color: string; spent: number; limit: number; pct: number; }
+type RecentTxRow = {
+  id: string;
+  source: "transaction" | "card";
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  type: "income" | "expense";
+  cardName?: string;
+  cardColor?: string;
+  installmentLabel?: string;
+};
 
 /* ── Modal: Editar Saldo ─────────────────────────── */
 function BalanceModal({
@@ -163,15 +178,118 @@ export default function DashboardPage() {
   const [monthExpenses, setMonthExpenses] = useState<Transaction[]>([]);
   const [pendingBills, setPendingBills] = useState<Bill[]>([]);
   const [pendingCardItems, setPendingCardItems] = useState<Array<{ name: string; amount: number; dueDay: number }>>([]);
-  const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
-  const [recentTx, setRecentTx] = useState<Transaction[]>([]);
+  const [generalCategoryData, setGeneralCategoryData] = useState<CategoryData[]>([]);
+  const [recentTx, setRecentTx] = useState<RecentTxRow[]>([]);
   const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const [receiveDates, setReceiveDates] = useState<Array<{ date: string; amount: number }>>([]);
   const alerts = useBillAlerts();
 
+  // Receitas/Despesas + variacao vs mes anterior
+  const [receitas, setReceitas] = useState(0);
+  const [despesas, setDespesas] = useState(0);
+  const [prevReceitas, setPrevReceitas] = useState(0);
+  const [prevDespesas, setPrevDespesas] = useState(0);
+
+  // Insights e projecao
+  const [insights, setInsights] = useState<string[]>([]);
+  const [projection, setProjection] = useState<number | null>(null);
+
   const [showBalanceModal, setShowBalanceModal] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
+
+  // Quick Add (FAB)
+  const [cardsForQuickAdd, setCardsForQuickAdd] = useState<Array<{
+    id: string; name: string; color: string; status: string; closing_day: number; due_day: number;
+  }>>([]);
+  const { categories: catList } = useCategories();
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [qSaving, setQSaving] = useState(false);
+  const [qType, setQType] = useState<"expense" | "income">("expense");
+  const [qMethod, setQMethod] = useState<"pix" | "card">("pix");
+  const [qCardId, setQCardId] = useState("");
+  const [qDesc, setQDesc] = useState("");
+  const [qAmount, setQAmount] = useState("");
+  const [qDate, setQDate] = useState(new Date().toISOString().split("T")[0]);
+  const [qCategory, setQCategory] = useState("outros");
+  const [qInstallments, setQInstallments] = useState(false);
+  const [qNumInstallments, setQNumInstallments] = useState("2");
+  const [qToast, setQToast] = useState<string | null>(null);
+
+  function quickToast(msg: string) {
+    setQToast(msg);
+    setTimeout(() => setQToast(null), 3000);
+  }
+
+  function openQuickAdd() {
+    setQType("expense"); setQMethod("pix");
+    setQCardId(cardsForQuickAdd[0]?.id || "");
+    setQDesc(""); setQAmount("");
+    setQDate(new Date().toISOString().split("T")[0]);
+    setQCategory("outros");
+    setQInstallments(false); setQNumInstallments("2");
+    setShowQuickAdd(true);
+  }
+
+  async function handleQuickAddSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setQSaving(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setQSaving(false); return; }
+
+    const totalAmount = parseFloat(qAmount);
+    const isCard = qType === "expense" && qMethod === "card";
+
+    if (isCard) {
+      const card = cardsForQuickAdd.find((c) => c.id === qCardId);
+      if (!card) { setQSaving(false); quickToast("Selecione um cartão"); return; }
+      const numInst = qInstallments ? parseInt(qNumInstallments) : 1;
+      const installmentAmount = Math.round((totalAmount / numInst) * 100) / 100;
+      const firstPeriod = computeBilling(qDate, card.closing_day, card.due_day);
+
+      const txs = [];
+      const bills = [];
+      for (let i = 0; i < numInst; i++) {
+        const period = i === 0 ? firstPeriod : addMonths(firstPeriod, i, card.due_day);
+        txs.push({
+          user_id: user.id, card_id: card.id,
+          description: qDesc.trim(), amount: installmentAmount,
+          date: qDate, bill_date: period.billDate,
+          installments: numInst, installment_current: i + 1,
+          category: qCategory,
+        });
+        const billDesc = numInst > 1
+          ? `${card.name} - ${qDesc.trim()} ${i + 1}/${numInst}`
+          : `${card.name} - ${qDesc.trim()}`;
+        bills.push({
+          user_id: user.id, description: billDesc, amount: installmentAmount,
+          due_date: period.dueDate, type: "payable" as const, status: "pending" as const,
+          recurrent: false, recurrence_day: null, notes: `card:${card.id}`,
+        });
+      }
+      const { error } = await supabase.from("card_transactions").insert(txs);
+      if (error) { setQSaving(false); quickToast("Erro: " + error.message); return; }
+      await supabase.from("bills").insert(bills);
+      quickToast(numInst > 1 ? `Parcelado ${numInst}x no ${card.name}` : `Gasto no ${card.name} registrado`);
+    } else {
+      const { error } = await supabase.from("transactions").insert({
+        user_id: user.id,
+        description: qDesc.trim(),
+        amount: totalAmount,
+        category: qCategory,
+        date: qDate,
+        type: qType,
+        status: "completed",
+      });
+      if (error) { setQSaving(false); quickToast("Erro: " + error.message); return; }
+      quickToast(qType === "income" ? "Receita registrada" : "Gasto registrado");
+    }
+
+    setShowQuickAdd(false);
+    setQSaving(false);
+    await loadDashboard();
+  }
 
   // Valor Final = Saldo Atual (com recebimentos) - Contas a Pagar Pendentes
   const totalToReceive = receiveDates.reduce((s, d) => s + d.amount, 0);
@@ -194,14 +312,23 @@ export default function DashboardPage() {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const endStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-    const [accountsRes, monthTxRes, billsRes, recentRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes, creditCardsRes] = await Promise.all([
+    // Mes anterior (para variacao)
+    const prevStartStr = `${now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()}-${String(now.getMonth() === 0 ? 12 : now.getMonth()).padStart(2, "0")}-01`;
+    const prevEndDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+    const prevEndStr = `${now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()}-${String(now.getMonth() === 0 ? 12 : now.getMonth()).padStart(2, "0")}-${String(prevEndDay).padStart(2, "0")}`;
+
+    const [accountsRes, monthTxRes, billsRes, recentTxRes, recentCardTxRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes, creditCardsRes, prevTxRes, prevCardTxRes] = await Promise.all([
       supabase.from("accounts").select("id, balance, name").eq("user_id", user.id),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
       supabase.from("bills").select("amount, type, status").eq("user_id", user.id)
         .gte("due_date", startStr).lte("due_date", endStr),
+      // recentTxRes: ultimas transactions
       supabase.from("transactions").select("*")
-        .eq("user_id", user.id).order("date", { ascending: false }).limit(5),
+        .eq("user_id", user.id).order("date", { ascending: false }).limit(10),
+      // recentCardTxRes: ultimas card_transactions
+      supabase.from("card_transactions").select("*")
+        .eq("user_id", user.id).order("date", { ascending: false }).limit(10),
       // cardTxRes: total da fatura → filtra por bill_date
       supabase.from("card_transactions").select("amount, category, card_id")
         .eq("user_id", user.id).gte("bill_date", startStr).lte("bill_date", endStr),
@@ -213,7 +340,12 @@ export default function DashboardPage() {
         .eq("user_id", user.id).eq("type", "payable").neq("status", "paid")
         .gte("due_date", startStr).lte("due_date", endStr)
         .order("due_date", { ascending: true }),
-      supabase.from("credit_cards").select("id, status, credit_limit").eq("user_id", user.id),
+      supabase.from("credit_cards").select("id, name, color, status, credit_limit, closing_day, due_day").eq("user_id", user.id),
+      // prev month para variacao
+      supabase.from("transactions").select("amount, type, category")
+        .eq("user_id", user.id).gte("date", prevStartStr).lte("date", prevEndStr),
+      supabase.from("card_transactions").select("amount, category")
+        .eq("user_id", user.id).gte("date", prevStartStr).lte("date", prevEndStr),
     ]);
 
     // Saldo — busca conta "Carteira" ou usa soma de todas
@@ -236,7 +368,10 @@ export default function DashboardPage() {
     setMonthExpenses(expTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
     // Cartões e transações
-    const creditCards = (creditCardsRes.data || []) as Array<{ id: string; status: string }>;
+    const creditCards = (creditCardsRes.data || []) as Array<{ id: string; name: string; color: string; status: string; closing_day: number; due_day: number }>;
+    const cardById: Record<string, { name: string; color: string }> = {};
+    creditCards.forEach((c) => { cardById[c.id] = { name: c.name, color: c.color }; });
+    setCardsForQuickAdd(creditCards);
     const cardTxData = (cardTxRes.data || []) as Array<{ amount: number; card_id: string }>;
 
     // Gastos cartao (apenas cartões não pagos)
@@ -297,7 +432,128 @@ export default function DashboardPage() {
       .sort((a, b) => b.value - a.value);
     setCardCategoryData(cardPieData);
 
-    setRecentTx((recentRes.data as Transaction[]) || []);
+    // === Receitas/Despesas do mes (transactions + card_transactions) ===
+    let rec = 0;
+    let des = 0;
+    const generalCatMap: Record<string, number> = {};
+    monthTx.forEach((t) => {
+      const a = Math.abs(t.amount);
+      if (t.type === "income" || t.amount > 0) {
+        rec += a;
+      } else {
+        des += a;
+        const cat = t.category || "outros";
+        generalCatMap[cat] = (generalCatMap[cat] || 0) + a;
+      }
+    });
+    (cardTxCatRes.data || []).forEach((t: { amount: number; category: string }) => {
+      const a = Math.abs(t.amount);
+      des += a;
+      const cat = t.category || "outros";
+      generalCatMap[cat] = (generalCatMap[cat] || 0) + a;
+    });
+    setReceitas(rec);
+    setDespesas(des);
+
+    const generalPie = Object.entries(generalCatMap)
+      .map(([key, value]) => ({
+        name: getCategoryConfig(key).label, value,
+        color: getCategoryConfig(key).color,
+      }))
+      .sort((a, b) => b.value - a.value);
+    setGeneralCategoryData(generalPie);
+
+    // === Mes anterior ===
+    let pRec = 0;
+    let pDes = 0;
+    const prevCatMap: Record<string, number> = {};
+    (prevTxRes.data || []).forEach((t: { amount: number; type: string; category: string }) => {
+      const a = Math.abs(t.amount);
+      if (t.type === "income" || t.amount > 0) pRec += a;
+      else {
+        pDes += a;
+        const cat = t.category || "outros";
+        prevCatMap[cat] = (prevCatMap[cat] || 0) + a;
+      }
+    });
+    (prevCardTxRes.data || []).forEach((t: { amount: number; category: string }) => {
+      const a = Math.abs(t.amount);
+      pDes += a;
+      const cat = t.category || "outros";
+      prevCatMap[cat] = (prevCatMap[cat] || 0) + a;
+    });
+    setPrevReceitas(pRec);
+    setPrevDespesas(pDes);
+
+    // === Ultimas transacoes (merge transactions + card_transactions) ===
+    const txRows: RecentTxRow[] = ((recentTxRes.data || []) as Transaction[]).map((t) => ({
+      id: `tx-${t.id}`,
+      source: "transaction",
+      description: t.description,
+      amount: Math.abs(t.amount),
+      category: t.category,
+      date: t.date,
+      type: (t.type === "income" || t.amount > 0) ? "income" : "expense",
+    }));
+    const cardTxRows: RecentTxRow[] = ((recentCardTxRes.data || []) as Array<{
+      id: string; description: string; amount: number; category: string; date: string;
+      card_id: string; installments: number; installment_current: number;
+    }>).map((t) => {
+      const c = cardById[t.card_id];
+      return {
+        id: `card-${t.id}`,
+        source: "card",
+        description: t.description,
+        amount: t.amount,
+        category: t.category,
+        date: t.date,
+        type: "expense",
+        cardName: c?.name,
+        cardColor: c?.color,
+        installmentLabel: t.installments > 1 ? `${t.installment_current}/${t.installments}` : undefined,
+      };
+    });
+    const merged = [...txRows, ...cardTxRows]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5);
+    setRecentTx(merged);
+
+    // === Insights ===
+    const insightList: string[] = [];
+    // 1) Categoria que mais cresceu vs mes anterior (com base absoluta minima)
+    const growth: Array<{ cat: string; delta: number; pct: number; cur: number }> = [];
+    for (const [cat, cur] of Object.entries(generalCatMap)) {
+      const prev = prevCatMap[cat] || 0;
+      if (cur >= 50 && prev > 0) {
+        const pct = ((cur - prev) / prev) * 100;
+        if (pct >= 25) growth.push({ cat, delta: cur - prev, pct, cur });
+      }
+    }
+    growth.sort((a, b) => b.pct - a.pct);
+    if (growth.length > 0) {
+      const top = growth[0];
+      insightList.push(
+        `Gastos em ${getCategoryConfig(top.cat).label} subiram ${top.pct.toFixed(0)}% vs mês passado (${formatCurrency(top.cur)})`
+      );
+    }
+    // 2) Maior categoria do mes
+    if (generalPie.length > 0) {
+      const topCat = generalPie[0];
+      const pct = des > 0 ? Math.round((topCat.value / des) * 100) : 0;
+      insightList.push(`Sua maior categoria este mês é ${topCat.name} (${pct}% das despesas)`);
+    }
+    setInsights(insightList);
+
+    // === Projecao de fim de mes ===
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    if (dayOfMonth >= 3 && des > 0) {
+      const avgPerDay = des / dayOfMonth;
+      const proj = avgPerDay * daysInMonth;
+      setProjection(proj);
+    } else {
+      setProjection(null);
+    }
 
     // Goals progress
     const goalSpentMap: Record<string, number> = {};
@@ -391,6 +647,71 @@ export default function DashboardPage() {
               color={valorFinal >= 0 ? "text-green-400" : "text-red-400"} />
           </div>
 
+          {/* ── Receitas + Despesas com variacao ── */}
+          <div className="grid grid-cols-2 gap-3">
+            {(() => {
+              const recVar = prevReceitas === 0
+                ? (receitas > 0 ? { value: "+100%", positive: true } : { value: "—", positive: true })
+                : (() => {
+                    const pct = ((receitas - prevReceitas) / Math.abs(prevReceitas)) * 100;
+                    return { value: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`, positive: pct >= 0 };
+                  })();
+              const desVar = prevDespesas === 0
+                ? (despesas > 0 ? { value: "+100%", positive: false } : { value: "—", positive: true })
+                : (() => {
+                    const pct = ((despesas - prevDespesas) / Math.abs(prevDespesas)) * 100;
+                    // Lower is better for despesas
+                    return { value: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`, positive: pct < 0 };
+                  })();
+              return (
+                <>
+                  <div className="glass-card p-4">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <ArrowUpRight size={12} className="text-green-400" />
+                      <p className="label-upper">Receitas</p>
+                    </div>
+                    <p className="text-lg font-bold text-green-400">{formatCurrency(receitas)}</p>
+                    <p className={`text-[10px] mt-1 ${recVar.positive ? "text-green-400" : "text-red-400"}`}>
+                      {recVar.value} <span className="text-white/30">vs mês anterior</span>
+                    </p>
+                  </div>
+                  <div className="glass-card p-4">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <ArrowDownRight size={12} className="text-red-400" />
+                      <p className="label-upper">Despesas</p>
+                    </div>
+                    <p className="text-lg font-bold text-red-400">{formatCurrency(despesas)}</p>
+                    <p className={`text-[10px] mt-1 ${desVar.positive ? "text-green-400" : "text-red-400"}`}>
+                      {desVar.value} <span className="text-white/30">vs mês anterior</span>
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          {/* ── Insights + Projecao ── */}
+          {(insights.length > 0 || projection !== null) && (
+            <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+              <div className="flex items-center gap-2">
+                <Lightbulb size={16} className="text-[#818CF8]" />
+                <span className="text-sm font-semibold">Insights</span>
+              </div>
+              <div className="space-y-1">
+                {insights.map((s, i) => (
+                  <p key={i} className="text-xs text-white/70">{s}</p>
+                ))}
+                {projection !== null && (
+                  <p className="text-xs text-white/70">
+                    Projeção de fim de mês:{" "}
+                    <span className="font-bold text-white">{formatCurrency(projection)}</span>
+                    <span className="text-white/40"> (no ritmo atual)</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Card total highlight */}
           {cardTotal > 0 && (
             <Link href="/credit-cards" className="block">
@@ -408,21 +729,21 @@ export default function DashboardPage() {
           )}
 
           {/* Gráfico: Categorias do Cartão */}
-          {cardTotal > 0 && cardCategoryData.length > 0 && (
+          {generalCategoryData.length > 0 && (
             <div className="glass-divider pb-5">
-              <h2 className="label-upper mb-3">Categorias do Cartao</h2>
+              <h2 className="label-upper mb-3">Categorias do Mês</h2>
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <ResponsiveContainer width="100%" height={200} className="sm:!w-1/2">
                   <PieChart>
-                    <Pie data={cardCategoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={75}
+                    <Pie data={generalCategoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={75}
                       dataKey="value" stroke="none">
-                      {cardCategoryData.map((entry, i) => (<Cell key={i} fill={entry.color} />))}
+                      {generalCategoryData.map((entry, i) => (<Cell key={i} fill={entry.color} />))}
                     </Pie>
                     <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={tooltipStyle} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="w-full sm:flex-1 space-y-2">
-                  {cardCategoryData.map((item, i) => (
+                  {generalCategoryData.map((item, i) => (
                     <div key={i} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
@@ -519,20 +840,42 @@ export default function DashboardPage() {
                 {recentTx.map((t) => {
                   const cat = getCategoryConfig(t.category);
                   const Icon = cat.icon;
+                  const isIncome = t.type === "income";
                   return (
                     <div key={t.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                           style={{ backgroundColor: cat.color + "20" }}>
                           <Icon size={16} style={{ color: cat.color }} />
                         </div>
-                        <div>
-                          <p className="text-sm font-medium">{t.description}</p>
-                          <p className="text-xs text-white/30">{formatDate(t.date)}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {t.description}
+                            {t.installmentLabel && (
+                              <span className="text-white/40 ml-1 text-xs">{t.installmentLabel}</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-white/30 flex items-center gap-1.5 flex-wrap">
+                            <span>{formatDate(t.date)}</span>
+                            {t.source === "card" && t.cardName && (
+                              <>
+                                <span>·</span>
+                                <span
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium"
+                                  style={{
+                                    backgroundColor: (t.cardColor || "#6366F1") + "30",
+                                    color: t.cardColor || "#6366F1",
+                                  }}
+                                >
+                                  <CreditCard size={10} /> {t.cardName}
+                                </span>
+                              </>
+                            )}
+                          </p>
                         </div>
                       </div>
-                      <span className={`text-sm font-bold ${t.type === "income" || t.amount > 0 ? "text-green-400" : "text-red-400"}`}>
-                        {t.type === "income" || t.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(t.amount))}
+                      <span className={`text-sm font-bold flex-shrink-0 ml-3 ${isIncome ? "text-green-400" : "text-red-400"}`}>
+                        {isIncome ? "+" : "-"}{formatCurrency(t.amount)}
                       </span>
                     </div>
                   );
@@ -540,6 +883,148 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── FAB: Novo gasto rapido ── */}
+      <button
+        onClick={openQuickAdd}
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 rounded-full bg-[#6366F1] hover:bg-[#4F46E5] text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+        title="Novo gasto"
+        aria-label="Novo gasto"
+      >
+        <Plus size={26} />
+      </button>
+
+      {/* ── Toast do Quick Add ── */}
+      {qToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] glass px-5 py-3 text-sm text-green-400">
+          {qToast}
+        </div>
+      )}
+
+      {/* ── Modal: Quick Add (FAB) ── */}
+      {showQuickAdd && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowQuickAdd(false)} />
+          <form onSubmit={handleQuickAddSubmit} className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-bold">{qType === "income" ? "Nova receita" : "Novo gasto"}</h2>
+              <button type="button" onClick={() => setShowQuickAdd(false)} className="text-white/45 hover:text-white p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div>
+              <label className="label-upper block mb-2">Tipo</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setQType("expense")}
+                  className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    qType === "expense" ? "bg-red-500/20 text-red-400 border border-red-500/50" : "glass-btn text-white/60"
+                  }`}>Despesa</button>
+                <button type="button" onClick={() => setQType("income")}
+                  className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    qType === "income" ? "bg-green-500/20 text-green-400 border border-green-500/50" : "glass-btn text-white/60"
+                  }`}>Receita</button>
+              </div>
+            </div>
+
+            {qType === "expense" && (
+              <div>
+                <label className="label-upper block mb-2">Forma de pagamento</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setQMethod("pix")}
+                    className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                      qMethod === "pix" ? "bg-[#6366F1]/20 text-[#818CF8] border border-[#6366F1]/50" : "glass-btn text-white/60"
+                    }`}>PIX / Débito</button>
+                  <button type="button" onClick={() => {
+                      if (cardsForQuickAdd.length === 0) { quickToast("Cadastre um cartão primeiro"); return; }
+                      setQMethod("card");
+                      if (!qCardId) setQCardId(cardsForQuickAdd[0].id);
+                    }}
+                    className={`py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                      qMethod === "card" ? "bg-[#6366F1]/20 text-[#818CF8] border border-[#6366F1]/50" : "glass-btn text-white/60"
+                    }`}>
+                    <CreditCard size={14} /> Cartão
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {qType === "expense" && qMethod === "card" && cardsForQuickAdd.length > 0 && (
+              <div>
+                <label className="label-upper block mb-1">Cartão</label>
+                <select required value={qCardId} onChange={(e) => setQCardId(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white">
+                  {cardsForQuickAdd.map((c) => (
+                    <option key={c.id} value={c.id} className="bg-[#1a1a2e]">{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="label-upper block mb-1">Descrição</label>
+              <input required value={qDesc} onChange={(e) => setQDesc(e.target.value)}
+                className="w-full glass-input px-3 py-3 text-base text-white"
+                placeholder="Ex: Mercado, Uber, Salário..." />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label-upper block mb-1">Valor</label>
+                <input required type="number" step="0.01" min="0.01" value={qAmount}
+                  onChange={(e) => setQAmount(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white" placeholder="0,00" />
+              </div>
+              <div>
+                <label className="label-upper block mb-1">Data</label>
+                <input required type="date" value={qDate} onChange={(e) => setQDate(e.target.value)}
+                  className="w-full glass-input px-3 py-3 text-base text-white" />
+              </div>
+            </div>
+
+            <div>
+              <label className="label-upper block mb-1">Categoria</label>
+              <select value={qCategory} onChange={(e) => setQCategory(e.target.value)}
+                className="w-full glass-input px-3 py-3 text-base text-white">
+                {catList.map((c) => (
+                  <option key={c.name} value={c.name} className="bg-[#1a1a2e]">{c.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {qType === "expense" && qMethod === "card" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" checked={qInstallments} onChange={(e) => setQInstallments(e.target.checked)}
+                    className="w-5 h-5 rounded accent-[#6366F1]" id="q-installments" />
+                  <label htmlFor="q-installments" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
+                    <Layers size={14} className="text-white/45" /> Parcelado
+                  </label>
+                </div>
+                {qInstallments && (
+                  <div className="glass-card p-3 space-y-2">
+                    <label className="label-upper block">Número de parcelas</label>
+                    <input type="number" min="2" max="48" value={qNumInstallments}
+                      onChange={(e) => setQNumInstallments(e.target.value)}
+                      className="w-full glass-input px-3 py-2.5 text-sm text-white" />
+                    {qAmount && (
+                      <p className="text-xs text-[#818CF8] flex items-center gap-1.5">
+                        <Layers size={12} />
+                        {qNumInstallments}x de {formatCurrency(parseFloat(qAmount) / parseInt(qNumInstallments || "1"))}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button type="submit" disabled={qSaving}
+              className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
+              {qSaving ? "Salvando..." : "Adicionar"}
+            </button>
+          </form>
         </div>
       )}
 
