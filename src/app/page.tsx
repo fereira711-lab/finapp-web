@@ -293,6 +293,7 @@ export default function DashboardPage() {
     setShowQuickAdd(false);
     setQSaving(false);
     await loadDashboard();
+    window.dispatchEvent(new Event("finapp:data-changed"));
   }
 
   // Valor Final = Saldo Atual (com recebimentos) - Contas a Pagar Pendentes
@@ -588,7 +589,19 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => {
+    loadDashboard();
+    const onChange = () => loadDashboard();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") loadDashboard();
+    };
+    window.addEventListener("finapp:data-changed", onChange);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("finapp:data-changed", onChange);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   // Carregar receiveDates do localStorage
   useEffect(() => {

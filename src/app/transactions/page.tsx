@@ -15,6 +15,7 @@ const PERIODS = [
   { label: "Este mês", value: "current" },
   { label: "Mês anterior", value: "previous" },
   { label: "Últimos 3 meses", value: "3months" },
+  { label: "Todas", value: "all" },
 ] as const;
 
 type PeriodValue = (typeof PERIODS)[number]["value"];
@@ -31,6 +32,8 @@ function getDateRange(period: PeriodValue): { start: string; end: string } {
       return { start: new Date(y, m - 1, 1).toISOString(), end: new Date(y, m, 0).toISOString() };
     case "3months":
       return { start: new Date(y, m - 2, 1).toISOString(), end: new Date(y, m + 1, 0).toISOString() };
+    case "all":
+      return { start: new Date(1970, 0, 1).toISOString(), end: new Date(y + 50, 11, 31).toISOString() };
   }
 }
 
@@ -318,6 +321,7 @@ export default function TransactionsPage() {
     closeForm();
     setSaving(false);
     await load();
+    window.dispatchEvent(new Event("finapp:data-changed"));
   }
 
   async function handleDelete() {
@@ -385,6 +389,7 @@ export default function TransactionsPage() {
     setDeleteAllInstallments(false);
     setDeleting(false);
     await load();
+    window.dispatchEvent(new Event("finapp:data-changed"));
   }
 
   return (
