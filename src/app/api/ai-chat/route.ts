@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
 
-    const [accountsRes, txRes, billsRes] = await Promise.all([
+    const [accountsRes, txRes, cardTxRes, billsRes, cardsRes] = await Promise.all([
       supabase.from("accounts").select("name, bank_name, balance").eq("user_id", user.id),
       supabase
         .from("transactions")
@@ -43,25 +43,42 @@ export async function POST(req: NextRequest) {
         .lte("date", endOfMonth)
         .order("date", { ascending: false }),
       supabase
+        .from("card_transactions")
+        .select("description, amount, category, date, card_id, installments, installment_current")
+        .eq("user_id", user.id)
+        .gte("date", startOfMonth)
+        .lte("date", endOfMonth)
+        .order("date", { ascending: false }),
+      supabase
         .from("bills")
         .select("description, amount, due_date, status")
         .eq("user_id", user.id)
         .eq("status", "pending"),
+      supabase
+        .from("credit_cards")
+        .select("id, name, status")
+        .eq("user_id", user.id),
     ]);
 
     const accounts = accountsRes.data || [];
     const transactions = txRes.data || [];
+    const cardTx = cardTxRes.data || [];
     const bills = billsRes.data || [];
+    const cards = cardsRes.data || [];
+    const cardNameById: Record<string, string> = {};
+    cards.forEach((c) => { cardNameById[c.id] = c.name; });
 
     const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
     const income = transactions
       .filter((t) => t.type === "income" || t.amount > 0)
       .reduce((s, t) => s + Math.abs(t.amount), 0);
-    const expenses = transactions
+    const txExpenses = transactions
       .filter((t) => t.type === "expense" || t.amount < 0)
       .reduce((s, t) => s + Math.abs(t.amount), 0);
+    const cardExpenses = cardTx.reduce((s, t) => s + Math.abs(t.amount), 0);
+    const expenses = txExpenses + cardExpenses;
 
-    // Group expenses by category
+    // Group expenses by category (PIX/Debito + cartão)
     const catTotals: Record<string, number> = {};
     transactions
       .filter((t) => t.type === "expense" || t.amount < 0)
@@ -69,6 +86,10 @@ export async function POST(req: NextRequest) {
         const cat = t.category || "outros";
         catTotals[cat] = (catTotals[cat] || 0) + Math.abs(t.amount);
       });
+    cardTx.forEach((t) => {
+      const cat = t.category || "outros";
+      catTotals[cat] = (catTotals[cat] || 0) + Math.abs(t.amount);
+    });
 
     const catSummary = Object.entries(catTotals)
       .sort((a, b) => b[1] - a[1])
@@ -80,6 +101,15 @@ export async function POST(req: NextRequest) {
       .map((t) => {
         const sign = t.type === "income" || t.amount > 0 ? "+" : "-";
         return `  - ${t.date} | ${t.description} | ${sign}${formatBRL(Math.abs(t.amount))} | ${t.category}`;
+      })
+      .join("\n");
+
+    const cardTxList = cardTx
+      .slice(0, 15)
+      .map((t) => {
+        const cardName = cardNameById[t.card_id] || "Cartão";
+        const inst = t.installments > 1 ? ` ${t.installment_current}/${t.installments}` : "";
+        return `  - ${t.date} | ${t.description}${inst} | -${formatBRL(Math.abs(t.amount))} | ${t.category} | ${cardName}`;
       })
       .join("\n");
 
@@ -103,17 +133,20 @@ Se o usuário perguntar algo que não está nos dados, diga que não tem essa in
 
 Saldo total: ${formatBRL(totalBalance)}
 Receitas do mês: ${formatBRL(income)}
-Despesas do mês: ${formatBRL(expenses)}
+Despesas do mês: ${formatBRL(expenses)} (PIX/Débito: ${formatBRL(txExpenses)} · Cartão: ${formatBRL(cardExpenses)})
 Saldo do mês: ${formatBRL(income - expenses)}
 
 Contas bancárias:
 ${accountsList || "  Nenhuma conta cadastrada"}
 
-Gastos por categoria:
+Gastos por categoria (PIX/Débito + Cartão):
 ${catSummary || "  Nenhuma despesa"}
 
-Últimas transações:
+Últimas transações (PIX/Débito/Receita):
 ${txList || "  Nenhuma transação"}
+
+Últimos gastos no cartão de crédito:
+${cardTxList || "  Nenhum gasto no cartão"}
 
 Contas a pagar pendentes:
 ${billsList || "  Nenhuma conta pendente"}`;
@@ -128,7 +161,7 @@ ${billsList || "  Nenhuma conta pendente"}`;
     ];
 
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 1024,
       system: systemPrompt,
       messages: apiMessages,

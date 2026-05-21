@@ -16,8 +16,8 @@ App financeiro pessoal com conexão automática a bancos brasileiros via Open Fi
 ---
 
 ## 3. VARIÁVEIS DE AMBIENTE (.env.local)
-NEXT_PUBLIC_SUPABASE_URL=https://dqplbqtsoplrmcjkugdb.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGci...LYqg
+NEXT_PUBLIC_SUPABASE_URL=https://ycyeyifnvvzxreeecwnk.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGci...nshfE
 PLUGGY_CLIENT_ID=seu_client_id
 PLUGGY_CLIENT_SECRET=seu_client_secret
 ANTHROPIC_API_KEY=sk-ant-...
@@ -25,7 +25,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ---
 
 ## 4. BANCO DE DADOS (Supabase)
-- Tabelas: profiles, accounts, transactions, bills, credit_cards, card_transactions, goals
+- Tabelas: profiles, accounts, transactions, bills, credit_cards, card_transactions, goals, categories
 - Coluna appearance (jsonb) em profiles para preferências visuais
 - RLS ativo — cada usuário vê só seus dados
 - Trigger automático cria perfil ao cadastrar
