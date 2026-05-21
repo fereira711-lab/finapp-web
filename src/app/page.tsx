@@ -8,6 +8,7 @@ import { getCategoryConfig, CATEGORY_CONFIG } from "@/lib/categories";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 import { useCategories } from "@/lib/useCategories";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
+import { updateWalletBalance } from "@/lib/wallet";
 import type { Transaction, Bill } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
@@ -283,6 +284,9 @@ export default function DashboardPage() {
         status: "completed",
       });
       if (error) { setQSaving(false); quickToast("Erro: " + error.message); return; }
+      // Receita soma no saldo, despesa PIX/Debito desconta
+      const delta = qType === "income" ? totalAmount : -totalAmount;
+      await updateWalletBalance(supabase, user.id, delta);
       quickToast(qType === "income" ? "Receita registrada" : "Gasto registrado");
     }
 

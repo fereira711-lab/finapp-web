@@ -9,6 +9,7 @@ import type { Transaction, CardTransaction, CreditCard } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import { Plus, X, CreditCard as CreditCardIcon, Layers } from "lucide-react";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
+import { updateWalletBalance } from "@/lib/wallet";
 
 const PERIODS = [
   { label: "Este mês", value: "current" },
@@ -262,6 +263,9 @@ export default function TransactionsPage() {
         status: "completed",
       });
       if (error) { setSaving(false); showToast("Erro ao salvar: " + error.message); return; }
+      // Receita soma no saldo, despesa PIX/Debito desconta
+      const delta = fType === "income" ? totalAmount : -totalAmount;
+      await updateWalletBalance(supabase, user.id, delta);
       showToast(fType === "income" ? "Receita registrada" : "Gasto registrado");
     }
 
