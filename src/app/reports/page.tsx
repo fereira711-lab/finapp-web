@@ -424,9 +424,10 @@ export default function ReportsPage() {
                   />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    formatter={(value: number, name) =>
-                      [formatCurrency(value), name === "receitas" ? "Receitas" : "Despesas"]
-                    }
+                    formatter={(value, name) => [
+                      formatCurrency(Number(value)),
+                      name === "receitas" ? "Receitas" : "Despesas",
+                    ]}
                   />
                   <Legend
                     wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}
