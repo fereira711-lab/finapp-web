@@ -58,6 +58,7 @@ export interface CardTransaction {
   description: string;
   amount: number;
   date: string;
+  bill_date: string | null;
   installments: number;
   installment_current: number;
   category: string;

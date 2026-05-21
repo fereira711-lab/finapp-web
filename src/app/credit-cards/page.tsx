@@ -6,6 +6,7 @@ import { formatCurrency } from "@/lib/format";
 import type { CreditCard, CardTransaction } from "@/lib/types";
 import { getCategoryConfig } from "@/lib/categories";
 import { useCategories } from "@/lib/useCategories";
+import { computeBilling, addMonths } from "@/lib/cardBilling";
 import AppShell from "@/components/AppShell";
 import {
   Plus,
@@ -106,6 +107,7 @@ export default function CreditCardsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Filtra pelo mes da fatura (bill_date), nao pela data da compra
     const startOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-01`;
     const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     const endOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
@@ -115,8 +117,8 @@ export default function CreditCardsPage() {
       .select("*")
       .eq("user_id", user.id)
       .eq("card_id", cardId)
-      .gte("date", startOfMonth)
-      .lte("date", endOfMonth)
+      .gte("bill_date", startOfMonth)
+      .lte("bill_date", endOfMonth)
       .order("date", { ascending: false });
 
     setTransactions(data || []);
@@ -286,30 +288,22 @@ export default function CreditCardsPage() {
     const numInst = txInstallments ? parseInt(txNumInstallments) : 1;
     const installmentAmount = Math.round((totalAmount / numInst) * 100) / 100;
 
+    // Ciclo de fatura da primeira parcela; demais parcelas avancam 1 mes
+    const firstPeriod = computeBilling(txDate, card.closing_day, card.due_day);
+
     const txs = [];
+    const bills = [];
     for (let i = 0; i < numInst; i++) {
-      const d = new Date(txDate + "T12:00:00");
-      d.setMonth(d.getMonth() + i);
+      const period = i === 0 ? firstPeriod : addMonths(firstPeriod, i, card.due_day);
+
       txs.push({
         user_id: user.id, card_id: card.id,
         description: txDesc.trim(), amount: installmentAmount,
-        date: d.toISOString().split("T")[0],
+        date: txDate, // data real da compra
+        bill_date: period.billDate, // mes da fatura
         installments: numInst, installment_current: i + 1,
         category: resolvedCategory,
       });
-    }
-    await supabase.from("card_transactions").insert(txs);
-
-    // Create bills for each installment (and for single purchases too)
-    const bills = [];
-    for (let i = 0; i < numInst; i++) {
-      const d = new Date(txDate + "T12:00:00");
-      d.setMonth(d.getMonth() + i);
-      const billYear = d.getFullYear();
-      const billMonth = d.getMonth();
-      const lastDayOfMonth = new Date(billYear, billMonth + 1, 0).getDate();
-      const billDueDay = Math.min(card.due_day, lastDayOfMonth);
-      const billDueDate = `${billYear}-${String(billMonth + 1).padStart(2, "0")}-${String(billDueDay).padStart(2, "0")}`;
 
       const billDesc = numInst > 1
         ? `${card.name} - ${txDesc.trim()} ${i + 1}/${numInst}`
@@ -319,7 +313,7 @@ export default function CreditCardsPage() {
         user_id: user.id,
         description: billDesc,
         amount: installmentAmount,
-        due_date: billDueDate,
+        due_date: period.dueDate,
         type: "payable" as const,
         status: "pending" as const,
         recurrent: false,
@@ -327,12 +321,13 @@ export default function CreditCardsPage() {
         notes: `card:${card.id}`,
       });
     }
+    await supabase.from("card_transactions").insert(txs);
     await supabase.from("bills").insert(bills);
 
-    // Navigate to the month of the first installment so user sees it
-    const firstDate = new Date(txDate + "T12:00:00");
-    setSelectedYear(firstDate.getFullYear());
-    setSelectedMonth(firstDate.getMonth());
+    // Navega para o mes da fatura da primeira parcela
+    const [fbY, fbM] = firstPeriod.billDate.split("-").map(Number);
+    setSelectedYear(fbY);
+    setSelectedMonth(fbM - 1);
 
     closeTxForm(); setSavingTx(false);
     await loadTransactions(card.id);

@@ -8,6 +8,7 @@ import { useCategories } from "@/lib/useCategories";
 import type { Transaction, CardTransaction, CreditCard } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import { Plus, X, CreditCard as CreditCardIcon, Layers } from "lucide-react";
+import { computeBilling, addMonths } from "@/lib/cardBilling";
 
 const PERIODS = [
   { label: "Este mês", value: "current" },
@@ -201,27 +202,22 @@ export default function TransactionsPage() {
 
       const numInst = fInstallments ? parseInt(fNumInstallments) : 1;
       const installmentAmount = Math.round((totalAmount / numInst) * 100) / 100;
+      const firstPeriod = computeBilling(fDate, card.closing_day, card.due_day);
 
       const txs = [];
       const bills = [];
       for (let i = 0; i < numInst; i++) {
-        const d = new Date(fDate + "T12:00:00");
-        d.setMonth(d.getMonth() + i);
-        const dateStr = d.toISOString().split("T")[0];
+        const period = i === 0 ? firstPeriod : addMonths(firstPeriod, i, card.due_day);
 
         txs.push({
           user_id: user.id, card_id: card.id,
           description: fDesc.trim(), amount: installmentAmount,
-          date: dateStr,
+          date: fDate, // data real da compra
+          bill_date: period.billDate, // mes da fatura
           installments: numInst, installment_current: i + 1,
           category: fCategory,
         });
 
-        const billYear = d.getFullYear();
-        const billMonth = d.getMonth();
-        const lastDay = new Date(billYear, billMonth + 1, 0).getDate();
-        const billDueDay = Math.min(card.due_day, lastDay);
-        const billDueDate = `${billYear}-${String(billMonth + 1).padStart(2, "0")}-${String(billDueDay).padStart(2, "0")}`;
         const billDesc = numInst > 1
           ? `${card.name} - ${fDesc.trim()} ${i + 1}/${numInst}`
           : `${card.name} - ${fDesc.trim()}`;
@@ -230,7 +226,7 @@ export default function TransactionsPage() {
           user_id: user.id,
           description: billDesc,
           amount: installmentAmount,
-          due_date: billDueDate,
+          due_date: period.dueDate,
           type: "payable" as const,
           status: "pending" as const,
           recurrent: false,

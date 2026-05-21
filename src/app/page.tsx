@@ -202,9 +202,11 @@ export default function DashboardPage() {
         .gte("due_date", startStr).lte("due_date", endStr),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).order("date", { ascending: false }).limit(5),
+      // cardTxRes: total da fatura → filtra por bill_date
       supabase.from("card_transactions").select("amount, category, card_id")
-        .eq("user_id", user.id).gte("date", startStr).lte("date", endStr),
+        .eq("user_id", user.id).gte("bill_date", startStr).lte("bill_date", endStr),
       supabase.from("goals").select("*").eq("user_id", user.id),
+      // cardTxCatRes: gastos do mes (orcamento de metas) → filtra por date (data da compra)
       supabase.from("card_transactions").select("amount, category, card_id")
         .eq("user_id", user.id).gte("date", startStr).lte("date", endStr),
       supabase.from("bills").select("*")
