@@ -84,6 +84,14 @@ ANTHROPIC_API_KEY=sk-ant-...
 - CLAUDE.md criado e atualizado
 - Metas financeiras por categoria com alertas no dashboard
 - Agrupamento de faturas de cartão na página de contas
+- Saldo atômico via RPC Postgres (sem race condition)
+- Sincronização de "valores a receber" entre devices (profiles.receive_dates)
+- Loading skeletons (shimmer) nas listas e dashboard
+- Refactor do dashboard: BalanceModal e QuickAddModal extraídos como componentes
+- IA financeira agora considera gastos de cartão de crédito
+- Atualização do modelo Anthropic para claude-sonnet-4-6
+- Filtro "Todas" em /transactions pra alcançar transações fora de 3 meses
+- Dashboard recarrega após mutações em outras telas (custom event + visibilitychange)
 
 ---
 
