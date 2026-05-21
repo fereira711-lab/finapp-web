@@ -45,6 +45,7 @@ export default function CreditCardsPage() {
   // Card form
   const [showCardForm, setShowCardForm] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [originalCard, setOriginalCard] = useState<CreditCard | null>(null);
   const [cardName, setCardName] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
   const [closingDay, setClosingDay] = useState("5");
@@ -52,6 +53,15 @@ export default function CreditCardsPage() {
   const [cardColor, setCardColor] = useState(CARD_COLORS[0]);
   const [cardStatus, setCardStatus] = useState<"pending" | "paid" | "overdue">("pending");
   const [savingCard, setSavingCard] = useState(false);
+
+  // Recalc confirmation
+  const [showRecalcConfirm, setShowRecalcConfirm] = useState(false);
+  const [recalcTxCount, setRecalcTxCount] = useState(0);
+  const [pendingCardData, setPendingCardData] = useState<{
+    name: string; bank_name: string; credit_limit: number;
+    closing_day: number; due_day: number; color: string;
+    status: "pending" | "paid" | "overdue";
+  } | null>(null);
 
   // Transaction form (create + edit)
   const [showTxForm, setShowTxForm] = useState(false);
@@ -152,10 +162,11 @@ export default function CreditCardsPage() {
   function resetCardForm() {
     setCardName(""); setCreditLimit(""); setClosingDay("5"); setDueDay("15");
     setCardColor(CARD_COLORS[0]); setCardStatus("pending"); setEditingCardId(null);
+    setOriginalCard(null);
   }
   function openNewCard() { resetCardForm(); setShowCardForm(true); }
   function openEditCard(card: CreditCard) {
-    setEditingCardId(card.id); setCardName(card.name);
+    setEditingCardId(card.id); setOriginalCard(card); setCardName(card.name);
     setCreditLimit(String(card.credit_limit)); setClosingDay(String(card.closing_day));
     setDueDay(String(card.due_day)); setCardColor(card.color); setCardStatus(card.status); setShowCardForm(true);
   }
@@ -173,7 +184,28 @@ export default function CreditCardsPage() {
       closing_day: parseInt(closingDay), due_day: parseInt(dueDay), color: cardColor,
       status: cardStatus,
     };
-    if (editingCardId) {
+
+    if (editingCardId && originalCard) {
+      const cycleChanged =
+        cardData.closing_day !== originalCard.closing_day ||
+        cardData.due_day !== originalCard.due_day;
+
+      if (cycleChanged) {
+        // Verifica se ha gastos para perguntar sobre recalculo
+        const { count } = await supabase
+          .from("card_transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("card_id", editingCardId);
+
+        if (count && count > 0) {
+          setPendingCardData(cardData);
+          setRecalcTxCount(count);
+          setShowRecalcConfirm(true);
+          setSavingCard(false);
+          return;
+        }
+      }
+
       await supabase.from("credit_cards").update(cardData).eq("id", editingCardId);
       showToast("Cartao atualizado");
     } else {
@@ -181,6 +213,81 @@ export default function CreditCardsPage() {
       showToast("Cartao adicionado");
     }
     closeCardForm(); setSavingCard(false); await loadCards();
+  }
+
+  async function applyCardEdit(recalculate: boolean) {
+    if (!editingCardId || !pendingCardData || !originalCard) return;
+    setSavingCard(true);
+    const supabase = createClient();
+
+    await supabase.from("credit_cards").update(pendingCardData).eq("id", editingCardId);
+
+    if (recalculate) {
+      // Carrega todos os card_transactions e bills vinculados
+      const [txRes, billsRes] = await Promise.all([
+        supabase.from("card_transactions").select("*").eq("card_id", editingCardId),
+        supabase.from("bills").select("*").eq("notes", `card:${editingCardId}`),
+      ]);
+
+      const txs = (txRes.data || []) as CardTransaction[];
+      const bills = (billsRes.data || []) as Array<{ id: string; description: string; due_date: string }>;
+
+      const newClosing = pendingCardData.closing_day;
+      const newDue = pendingCardData.due_day;
+      const oldName = originalCard.name;
+      const newName = pendingCardData.name;
+
+      for (const tx of txs) {
+        const first = computeBilling(tx.date, newClosing, newDue);
+        const period = tx.installment_current > 1
+          ? addMonths(first, tx.installment_current - 1, newDue)
+          : first;
+
+        await supabase.from("card_transactions")
+          .update({ bill_date: period.billDate })
+          .eq("id", tx.id);
+
+        // Encontra a bill correspondente pelo sufixo da descricao
+        const suffix = tx.installments > 1
+          ? ` - ${tx.description} ${tx.installment_current}/${tx.installments}`
+          : ` - ${tx.description}`;
+        const matchingBill = bills.find((b) => b.description === `${oldName}${suffix}`);
+        if (matchingBill) {
+          await supabase.from("bills")
+            .update({
+              due_date: period.dueDate,
+              description: `${newName}${suffix}`,
+            })
+            .eq("id", matchingBill.id);
+        }
+      }
+      showToast(`Cartao atualizado e ${txs.length} lancamento(s) recalculados`);
+    } else {
+      // Nao recalcular: ainda assim atualiza nome nas bills se mudou
+      if (originalCard.name !== pendingCardData.name) {
+        const { data: bills } = await supabase
+          .from("bills").select("id, description")
+          .eq("notes", `card:${editingCardId}`);
+        if (bills) {
+          for (const b of bills) {
+            const newDesc = b.description.replace(
+              new RegExp(`^${originalCard.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} - `),
+              `${pendingCardData.name} - `
+            );
+            if (newDesc !== b.description) {
+              await supabase.from("bills").update({ description: newDesc }).eq("id", b.id);
+            }
+          }
+        }
+      }
+      showToast("Cartao atualizado (sem recalcular gastos)");
+    }
+
+    setShowRecalcConfirm(false);
+    setPendingCardData(null);
+    closeCardForm();
+    setSavingCard(false);
+    await loadCards();
   }
 
   async function handleDeleteCard() {
@@ -755,6 +862,48 @@ export default function CreditCardsPage() {
               </button>
             </div>
             <button onClick={() => setShowEditScope(false)} className="w-full text-white/40 text-sm py-2">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Recalc confirmation */}
+      {showRecalcConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowRecalcConfirm(false)} />
+          <div className="relative glass p-5 w-full max-w-sm space-y-4">
+            <h2 className="text-lg font-bold">Recalcular gastos?</h2>
+            <p className="text-sm text-white/60">
+              Voce mudou o fechamento ou vencimento do cartao. Existem{" "}
+              <span className="text-white font-bold">{recalcTxCount} lancamento(s)</span>{" "}
+              ja registrados neste cartao.
+            </p>
+            <p className="text-xs text-white/45">
+              Recalcular vai reposicionar cada lancamento na fatura correta com os novos dias.
+              Nao recalcular mantem os lancamentos onde estao.
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => applyCardEdit(true)}
+                disabled={savingCard}
+                className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {savingCard ? "Recalculando..." : "Recalcular gastos existentes"}
+              </button>
+              <button
+                onClick={() => applyCardEdit(false)}
+                disabled={savingCard}
+                className="w-full glass-btn text-white text-sm py-3 rounded-xl hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                Salvar sem recalcular
+              </button>
+            </div>
+            <button
+              onClick={() => { setShowRecalcConfirm(false); setPendingCardData(null); }}
+              disabled={savingCard}
+              className="w-full text-white/40 text-sm py-2"
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}
