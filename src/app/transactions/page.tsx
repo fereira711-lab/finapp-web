@@ -7,7 +7,7 @@ import { getCategoryConfig } from "@/lib/categories";
 import { useCategories } from "@/lib/useCategories";
 import type { Transaction, CardTransaction, CreditCard } from "@/lib/types";
 import AppShell from "@/components/AppShell";
-import { Plus, X, CreditCard as CreditCardIcon, Layers } from "lucide-react";
+import { Plus, X, CreditCard as CreditCardIcon, Layers, Pencil, Trash2 } from "lucide-react";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
 import { updateWalletBalance } from "@/lib/wallet";
 
@@ -65,6 +65,8 @@ export default function TransactionsPage() {
   // Form
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingTxId, setEditingTxId] = useState<string | null>(null); // ID real (sem prefixo)
+  const [editingOriginal, setEditingOriginal] = useState<{ amount: number; type: "income" | "expense" } | null>(null);
   const [fType, setFType] = useState<"expense" | "income">("expense");
   const [fMethod, setFMethod] = useState<"pix" | "card">("pix");
   const [fCardId, setFCardId] = useState<string>("");
@@ -75,6 +77,11 @@ export default function TransactionsPage() {
   const [fDate, setFDate] = useState(new Date().toISOString().split("T")[0]);
   const [fCategory, setFCategory] = useState("outros");
   const [toast, setToast] = useState<string | null>(null);
+
+  // Delete confirmation
+  const [deleteRow, setDeleteRow] = useState<UnifiedRow | null>(null);
+  const [deleteAllInstallments, setDeleteAllInstallments] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -184,6 +191,8 @@ export default function TransactionsPage() {
     setFAmount("");
     setFDate(new Date().toISOString().split("T")[0]);
     setFCategory("outros");
+    setEditingTxId(null);
+    setEditingOriginal(null);
   }
 
   function openForm() {
@@ -191,8 +200,28 @@ export default function TransactionsPage() {
     setShowForm(true);
   }
 
+  function openEditRow(row: UnifiedRow) {
+    if (row.source === "card") {
+      showToast("Edite gastos de cartao no menu Cartoes");
+      return;
+    }
+    const realId = row.id.replace(/^tx-/, "");
+    setEditingTxId(realId);
+    setEditingOriginal({ amount: row.amount, type: row.type });
+    setFType(row.type);
+    setFMethod("pix"); // edit so suporta nao-cartao
+    setFDesc(row.description);
+    setFAmount(String(row.amount));
+    setFDate(row.date);
+    setFCategory(row.category);
+    setFInstallments(false);
+    setFNumInstallments("2");
+    setShowForm(true);
+  }
+
   function closeForm() {
     setShowForm(false);
+    resetForm();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -253,24 +282,108 @@ export default function TransactionsPage() {
         ? `Parcelado em ${numInst}x de ${formatCurrency(installmentAmount)} no ${card.name}`
         : `Gasto no ${card.name} registrado`);
     } else {
-      const { error } = await supabase.from("transactions").insert({
-        user_id: user.id,
-        description: fDesc.trim(),
-        amount: totalAmount,
-        category: fCategory,
-        date: fDate,
-        type: fType,
-        status: "completed",
-      });
-      if (error) { setSaving(false); showToast("Erro ao salvar: " + error.message); return; }
-      // Receita soma no saldo, despesa PIX/Debito desconta
-      const delta = fType === "income" ? totalAmount : -totalAmount;
-      await updateWalletBalance(supabase, user.id, delta);
-      showToast(fType === "income" ? "Receita registrada" : "Gasto registrado");
+      if (editingTxId && editingOriginal) {
+        // EDIT MODE: ajusta saldo pelo delta entre original e novo
+        const { error } = await supabase.from("transactions").update({
+          description: fDesc.trim(),
+          amount: totalAmount,
+          category: fCategory,
+          date: fDate,
+          type: fType,
+        }).eq("id", editingTxId);
+        if (error) { setSaving(false); showToast("Erro ao salvar: " + error.message); return; }
+
+        // Reverte efeito original e aplica novo
+        const oldDelta = editingOriginal.type === "income" ? editingOriginal.amount : -editingOriginal.amount;
+        const newDelta = fType === "income" ? totalAmount : -totalAmount;
+        await updateWalletBalance(supabase, user.id, newDelta - oldDelta);
+        showToast("Atualizado");
+      } else {
+        const { error } = await supabase.from("transactions").insert({
+          user_id: user.id,
+          description: fDesc.trim(),
+          amount: totalAmount,
+          category: fCategory,
+          date: fDate,
+          type: fType,
+          status: "completed",
+        });
+        if (error) { setSaving(false); showToast("Erro ao salvar: " + error.message); return; }
+        const delta = fType === "income" ? totalAmount : -totalAmount;
+        await updateWalletBalance(supabase, user.id, delta);
+        showToast(fType === "income" ? "Receita registrada" : "Gasto registrado");
+      }
     }
 
     closeForm();
     setSaving(false);
+    await load();
+  }
+
+  async function handleDelete() {
+    if (!deleteRow) return;
+    setDeleting(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setDeleting(false); return; }
+
+    if (deleteRow.source === "transaction") {
+      const realId = deleteRow.id.replace(/^tx-/, "");
+      const { error } = await supabase.from("transactions").delete().eq("id", realId);
+      if (error) { setDeleting(false); showToast("Erro ao excluir: " + error.message); return; }
+      // Reverte saldo
+      const delta = deleteRow.type === "income" ? -deleteRow.amount : deleteRow.amount;
+      await updateWalletBalance(supabase, user.id, delta);
+      showToast("Excluido");
+    } else {
+      // card_transaction: deleta e remove bill vinculada
+      const realId = deleteRow.id.replace(/^card-/, "");
+      const card = cards.find((c) => c.id === deleteRow.cardId);
+
+      // Carrega tx pra saber description, installments etc
+      const { data: tx } = await supabase
+        .from("card_transactions")
+        .select("*")
+        .eq("id", realId)
+        .single();
+
+      if (!tx) { setDeleting(false); showToast("Lancamento nao encontrado"); return; }
+
+      if (deleteAllInstallments && tx.installments > 1 && card) {
+        // Deletar todas as parcelas
+        const { data: siblings } = await supabase
+          .from("card_transactions")
+          .select("id")
+          .eq("card_id", tx.card_id)
+          .eq("description", tx.description)
+          .eq("installments", tx.installments)
+          .eq("user_id", user.id);
+        if (siblings && siblings.length > 0) {
+          await supabase.from("card_transactions").delete().in("id", siblings.map((s) => s.id));
+        }
+        await supabase.from("bills").delete()
+          .eq("user_id", user.id)
+          .eq("notes", `card:${tx.card_id}`)
+          .like("description", `${card.name} - ${tx.description}%`);
+        showToast("Parcelas removidas");
+      } else {
+        await supabase.from("card_transactions").delete().eq("id", realId);
+        if (card) {
+          const billDescPattern = tx.installments > 1
+            ? `${card.name} - ${tx.description} ${tx.installment_current}/${tx.installments}`
+            : `${card.name} - ${tx.description}`;
+          await supabase.from("bills").delete()
+            .eq("user_id", user.id)
+            .eq("notes", `card:${tx.card_id}`)
+            .eq("description", billDescPattern);
+        }
+        showToast("Lancamento removido");
+      }
+    }
+
+    setDeleteRow(null);
+    setDeleteAllInstallments(false);
+    setDeleting(false);
     await load();
   }
 
@@ -393,9 +506,27 @@ export default function TransactionsPage() {
                     </p>
                   </div>
                 </div>
-                <span className={`font-bold text-sm flex-shrink-0 ml-3 ${isIncome ? "text-green-400" : "text-red-400"}`}>
-                  {isIncome ? "+" : "-"}{formatCurrency(r.amount)}
-                </span>
+                <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                  <span className={`font-bold text-sm ${isIncome ? "text-green-400" : "text-red-400"}`}>
+                    {isIncome ? "+" : "-"}{formatCurrency(r.amount)}
+                  </span>
+                  {r.source === "transaction" && (
+                    <button
+                      onClick={() => openEditRow(r)}
+                      className="p-1.5 rounded-lg text-white/20 hover:text-[#6366F1] hover:bg-[#6366F1]/10 transition-colors"
+                      title="Editar"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setDeleteRow(r); setDeleteAllInstallments(false); }}
+                    className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                    title="Excluir"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -409,7 +540,9 @@ export default function TransactionsPage() {
           <form onSubmit={handleSubmit} className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold">
-                {fType === "income" ? "Nova receita" : "Novo gasto"}
+                {editingTxId
+                  ? (fType === "income" ? "Editar receita" : "Editar gasto")
+                  : (fType === "income" ? "Nova receita" : "Novo gasto")}
               </h2>
               <button type="button" onClick={closeForm} className="text-white/45 hover:text-white p-1">
                 <X size={20} />
@@ -445,8 +578,8 @@ export default function TransactionsPage() {
               </div>
             </div>
 
-            {/* Metodo (so para despesa) */}
-            {fType === "expense" && (
+            {/* Metodo (so para despesa, escondido em edit) */}
+            {fType === "expense" && !editingTxId && (
               <div>
                 <label className="label-upper block mb-2">Forma de pagamento</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -484,7 +617,7 @@ export default function TransactionsPage() {
             )}
 
             {/* Cartao selector */}
-            {fType === "expense" && fMethod === "card" && cards.length > 0 && (
+            {fType === "expense" && fMethod === "card" && cards.length > 0 && !editingTxId && (
               <div>
                 <label className="label-upper block mb-1">Cartão</label>
                 <select
@@ -558,8 +691,8 @@ export default function TransactionsPage() {
               </select>
             </div>
 
-            {/* Parcelamento (so para cartao + despesa) */}
-            {fType === "expense" && fMethod === "card" && (
+            {/* Parcelamento (so para cartao + despesa, nao em edit) */}
+            {fType === "expense" && fMethod === "card" && !editingTxId && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <input
@@ -699,6 +832,64 @@ export default function TransactionsPage() {
           </div>
         );
       })()}
+
+      {/* Modal: Confirmar exclusao */}
+      {deleteRow && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteRow(null)} />
+          <div className="relative glass p-5 w-full max-w-sm space-y-4">
+            <h2 className="text-lg font-bold">Excluir lançamento?</h2>
+            <div className="text-sm text-white/60 space-y-1">
+              <p className="font-medium text-white">{deleteRow.description}</p>
+              <p className="text-xs text-white/40">
+                {formatDate(deleteRow.date)} · {formatCurrency(deleteRow.amount)}
+                {deleteRow.installmentLabel && ` · ${deleteRow.installmentLabel}`}
+                {deleteRow.cardName && ` · ${deleteRow.cardName}`}
+              </p>
+            </div>
+
+            {deleteRow.source === "transaction" && (
+              <p className="text-xs text-white/45">
+                {deleteRow.type === "income"
+                  ? "O valor será removido do Saldo Atual."
+                  : "O valor será devolvido ao Saldo Atual."}
+              </p>
+            )}
+
+            {deleteRow.source === "card" && deleteRow.installmentLabel && (
+              <div className="flex items-center gap-2 p-3 glass-card">
+                <input
+                  type="checkbox"
+                  id="del-all-inst"
+                  checked={deleteAllInstallments}
+                  onChange={(e) => setDeleteAllInstallments(e.target.checked)}
+                  className="w-5 h-5 rounded accent-[#6366F1]"
+                />
+                <label htmlFor="del-all-inst" className="text-xs text-white/70 cursor-pointer">
+                  Excluir <span className="font-bold">todas as parcelas</span> e contas vinculadas
+                </label>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="w-full bg-red-500/20 text-red-400 text-sm font-medium py-3 rounded-xl hover:bg-red-500/30 transition-colors disabled:opacity-50"
+              >
+                {deleting ? "Excluindo..." : "Excluir"}
+              </button>
+              <button
+                onClick={() => setDeleteRow(null)}
+                disabled={deleting}
+                className="w-full text-white/40 text-sm py-2"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Nova Categoria */}
       {showNewCat && (
