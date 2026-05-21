@@ -2,35 +2,22 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Atualiza o saldo da carteira do usuario somando o delta (positivo entra, negativo sai).
- * Se a carteira nao existe, cria com o delta como saldo inicial.
+ * Operacao atomica via RPC Postgres (balance = balance + delta).
+ * Cria a carteira se nao existir.
  *
- * Usado para que receitas e despesas PIX/Debito reflitam em tempo real no Saldo Atual.
+ * O parametro userId e mantido por compatibilidade com chamadas existentes,
+ * mas a funcao no banco usa auth.uid() como fonte de verdade.
+ *
  * Despesas de cartao NAO devem chamar isso (saldo so muda quando a fatura for paga).
  */
 export async function updateWalletBalance(
   supabase: SupabaseClient,
-  userId: string,
+  _userId: string,
   delta: number,
 ): Promise<void> {
   if (delta === 0) return;
-
-  const { data: existing } = await supabase
-    .from("accounts")
-    .select("id, balance")
-    .eq("user_id", userId)
-    .ilike("name", "carteira")
-    .maybeSingle();
-
-  if (existing) {
-    const newBalance = Number(existing.balance) + delta;
-    await supabase.from("accounts").update({ balance: newBalance }).eq("id", existing.id);
-  } else {
-    await supabase.from("accounts").insert({
-      user_id: userId,
-      name: "Carteira",
-      bank_name: "Manual",
-      account_type: "checking",
-      balance: delta,
-    });
+  const { error } = await supabase.rpc("increment_wallet_balance", { p_delta: delta });
+  if (error) {
+    console.error("updateWalletBalance error:", error.message);
   }
 }
