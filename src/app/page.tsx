@@ -179,9 +179,13 @@ export default function DashboardPage() {
   const valorFinal = balanceWithReceive - pendingBillsTotal;
 
   async function loadDashboard() {
+    try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -315,8 +319,11 @@ export default function DashboardPage() {
     });
     gProgress.sort((a, b) => b.pct - a.pct);
     setGoalProgress(gProgress);
-
-    setLoading(false);
+    } catch (err) {
+      console.error("loadDashboard error:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { loadDashboard(); }, []);

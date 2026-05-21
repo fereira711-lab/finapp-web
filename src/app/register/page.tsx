@@ -33,9 +33,7 @@ export default function RegisterPage() {
       return;
     }
 
-    if (data.user) {
-      await supabase.from("profiles").upsert({ id: data.user.id, name });
-    }
+    // Profile + categorias padrao sao criados via trigger no banco (handle_new_user)
 
     router.push("/");
     router.refresh();
