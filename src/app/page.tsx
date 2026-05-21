@@ -4,18 +4,18 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { getCategoryConfig, CATEGORY_CONFIG } from "@/lib/categories";
+import { getCategoryConfig } from "@/lib/categories";
 import { useBillAlerts } from "@/lib/useBillAlerts";
-import { useCategories } from "@/lib/useCategories";
-import { computeBilling, addMonths } from "@/lib/cardBilling";
-import { updateWalletBalance } from "@/lib/wallet";
 import type { Transaction, Bill } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
+import { DashboardSkeleton } from "@/components/Skeleton";
+import BalanceModal from "@/components/dashboard/BalanceModal";
+import QuickAddModal from "@/components/dashboard/QuickAddModal";
 import {
-  Wallet, TrendingDown, FileText, Calculator,
+  Wallet, FileText, Calculator,
   AlertTriangle, CreditCard, Target, X,
-  ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Layers,
+  ArrowUpRight, ArrowDownRight, Lightbulb, Plus,
 } from "lucide-react";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
@@ -35,138 +35,6 @@ type RecentTxRow = {
   cardColor?: string;
   installmentLabel?: string;
 };
-
-/* ── Modal: Editar Saldo ─────────────────────────── */
-function BalanceModal({
-  open, currentBalance, onClose, onSave, receiveDates, onReceiveDatesChange,
-}: {
-  open: boolean; currentBalance: number; onClose: () => void; onSave: (value: number) => void;
-  receiveDates: Array<{ date: string; amount: number }>; onReceiveDatesChange: (dates: Array<{ date: string; amount: number }>) => void;
-}) {
-  const [value, setValue] = useState("");
-  const [dates, setDates] = useState<Array<{ date: string; amount: number }>>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setValue(currentBalance.toFixed(2).replace(".", ","));
-      setDates(receiveDates);
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [open, currentBalance, receiveDates]);
-
-  // Persiste imediatamente toda mudança em dates
-  useEffect(() => {
-    if (open) onReceiveDatesChange(dates);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dates]);
-
-  if (!open) return null;
-
-  function handleSave() {
-    const parsed = parseFloat(value.replace(/\./g, "").replace(",", "."));
-    if (!isNaN(parsed)) {
-      onSave(parsed);
-      onReceiveDatesChange(dates);
-    }
-  }
-
-  function addReceiveDate() {
-    setDates([...dates, { date: "", amount: 0 }]);
-  }
-
-  function removeReceiveDate(idx: number) {
-    setDates(dates.filter((_, i) => i !== idx));
-  }
-
-  function updateReceiveDate(idx: number, field: "date" | "amount", val: string) {
-    const newDates = [...dates];
-    if (field === "date") {
-      newDates[idx].date = val;
-    } else {
-      // Converter qualquer formato para número
-      const numVal = parseFloat(val.replace(/[^\d,.-]/g, "").replace(",", "."));
-      newDates[idx].amount = isNaN(numVal) ? 0 : numVal;
-    }
-    setDates(newDates);
-  }
-
-  const totalReceive = dates.reduce((s, d) => s + d.amount, 0);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="glass w-full max-w-sm p-5 relative z-10 space-y-4 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold">Atualizar Saldo</h3>
-          <button onClick={onClose} className="text-white/40 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-        <div>
-          <label className="label-upper block mb-1">Saldo atual (R$)</label>
-          <input
-            ref={inputRef}
-            type="text"
-            inputMode="decimal"
-            className="glass-input w-full px-3 py-2 text-sm text-white"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSave()}
-          />
-        </div>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="label-upper block">Valores a receber</label>
-            <button onClick={addReceiveDate} className="text-[10px] text-[#6366F1] hover:underline">
-              + Adicionar
-            </button>
-          </div>
-          {dates.map((rec, idx) => (
-            <div key={idx} className="space-y-2 p-3 glass-card">
-              <div>
-                <label className="text-[10px] text-white/60 block mb-1">Data</label>
-                <input
-                  type="date"
-                  className="glass-input w-full px-2 py-1.5 text-sm text-white"
-                  value={rec.date}
-                  onChange={(e) => updateReceiveDate(idx, "date", e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-white/60 block mb-1">Valor</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="glass-input w-full px-2 py-1.5 text-sm text-white"
-                  value={rec.amount.toFixed(2).replace(".", ",")}
-                  onChange={(e) => updateReceiveDate(idx, "amount", e.target.value)}
-                />
-              </div>
-              <button
-                onClick={() => removeReceiveDate(idx)}
-                className="text-xs text-red-400 hover:text-red-300"
-              >
-                Remover
-              </button>
-            </div>
-          ))}
-          {dates.length > 0 && (
-            <p className="text-xs text-white/60 text-center">
-              Total a receber: <span className="text-green-400 font-bold">{formatCurrency(totalReceive)}</span>
-            </p>
-          )}
-        </div>
-        <button
-          onClick={handleSave}
-          className="glass-btn-active w-full py-2.5 text-sm font-medium"
-        >
-          Salvar
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /* ── Dashboard ───────────────────────────────────── */
 export default function DashboardPage() {
@@ -203,98 +71,7 @@ export default function DashboardPage() {
   const [cardsForQuickAdd, setCardsForQuickAdd] = useState<Array<{
     id: string; name: string; color: string; status: string; closing_day: number; due_day: number;
   }>>([]);
-  const { categories: catList } = useCategories();
   const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [qSaving, setQSaving] = useState(false);
-  const [qType, setQType] = useState<"expense" | "income">("expense");
-  const [qMethod, setQMethod] = useState<"pix" | "card">("pix");
-  const [qCardId, setQCardId] = useState("");
-  const [qDesc, setQDesc] = useState("");
-  const [qAmount, setQAmount] = useState("");
-  const [qDate, setQDate] = useState(new Date().toISOString().split("T")[0]);
-  const [qCategory, setQCategory] = useState("outros");
-  const [qInstallments, setQInstallments] = useState(false);
-  const [qNumInstallments, setQNumInstallments] = useState("2");
-  const [qToast, setQToast] = useState<string | null>(null);
-
-  function quickToast(msg: string) {
-    setQToast(msg);
-    setTimeout(() => setQToast(null), 3000);
-  }
-
-  function openQuickAdd() {
-    setQType("expense"); setQMethod("pix");
-    setQCardId(cardsForQuickAdd[0]?.id || "");
-    setQDesc(""); setQAmount("");
-    setQDate(new Date().toISOString().split("T")[0]);
-    setQCategory("outros");
-    setQInstallments(false); setQNumInstallments("2");
-    setShowQuickAdd(true);
-  }
-
-  async function handleQuickAddSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setQSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setQSaving(false); return; }
-
-    const totalAmount = parseFloat(qAmount);
-    const isCard = qType === "expense" && qMethod === "card";
-
-    if (isCard) {
-      const card = cardsForQuickAdd.find((c) => c.id === qCardId);
-      if (!card) { setQSaving(false); quickToast("Selecione um cartão"); return; }
-      const numInst = qInstallments ? parseInt(qNumInstallments) : 1;
-      const installmentAmount = Math.round((totalAmount / numInst) * 100) / 100;
-      const firstPeriod = computeBilling(qDate, card.closing_day, card.due_day);
-
-      const txs = [];
-      const bills = [];
-      for (let i = 0; i < numInst; i++) {
-        const period = i === 0 ? firstPeriod : addMonths(firstPeriod, i, card.due_day);
-        txs.push({
-          user_id: user.id, card_id: card.id,
-          description: qDesc.trim(), amount: installmentAmount,
-          date: qDate, bill_date: period.billDate,
-          installments: numInst, installment_current: i + 1,
-          category: qCategory,
-        });
-        const billDesc = numInst > 1
-          ? `${card.name} - ${qDesc.trim()} ${i + 1}/${numInst}`
-          : `${card.name} - ${qDesc.trim()}`;
-        bills.push({
-          user_id: user.id, description: billDesc, amount: installmentAmount,
-          due_date: period.dueDate, type: "payable" as const, status: "pending" as const,
-          recurrent: false, recurrence_day: null, notes: `card:${card.id}`,
-        });
-      }
-      const { error } = await supabase.from("card_transactions").insert(txs);
-      if (error) { setQSaving(false); quickToast("Erro: " + error.message); return; }
-      await supabase.from("bills").insert(bills);
-      quickToast(numInst > 1 ? `Parcelado ${numInst}x no ${card.name}` : `Gasto no ${card.name} registrado`);
-    } else {
-      const { error } = await supabase.from("transactions").insert({
-        user_id: user.id,
-        description: qDesc.trim(),
-        amount: totalAmount,
-        category: qCategory,
-        date: qDate,
-        type: qType,
-        status: "completed",
-      });
-      if (error) { setQSaving(false); quickToast("Erro: " + error.message); return; }
-      // Receita soma no saldo, despesa PIX/Debito desconta
-      const delta = qType === "income" ? totalAmount : -totalAmount;
-      await updateWalletBalance(supabase, user.id, delta);
-      quickToast(qType === "income" ? "Receita registrada" : "Gasto registrado");
-    }
-
-    setShowQuickAdd(false);
-    setQSaving(false);
-    await loadDashboard();
-    window.dispatchEvent(new Event("finapp:data-changed"));
-  }
 
   // Valor Final = Saldo Atual (com recebimentos) - Contas a Pagar Pendentes
   const totalToReceive = receiveDates.reduce((s, d) => s + d.amount, 0);
@@ -322,7 +99,7 @@ export default function DashboardPage() {
     const prevEndDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
     const prevEndStr = `${now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()}-${String(now.getMonth() === 0 ? 12 : now.getMonth()).padStart(2, "0")}-${String(prevEndDay).padStart(2, "0")}`;
 
-    const [accountsRes, monthTxRes, billsRes, recentTxRes, recentCardTxRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes, creditCardsRes, prevTxRes, prevCardTxRes] = await Promise.all([
+    const [accountsRes, monthTxRes, billsRes, recentTxRes, recentCardTxRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes, creditCardsRes, prevTxRes, prevCardTxRes, profileRes] = await Promise.all([
       supabase.from("accounts").select("id, balance, name").eq("user_id", user.id),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
@@ -351,7 +128,11 @@ export default function DashboardPage() {
         .eq("user_id", user.id).gte("date", prevStartStr).lte("date", prevEndStr),
       supabase.from("card_transactions").select("amount, category")
         .eq("user_id", user.id).gte("date", prevStartStr).lte("date", prevEndStr),
+      supabase.from("profiles").select("receive_dates").eq("id", user.id).maybeSingle(),
     ]);
+
+    const rawReceive = (profileRes.data?.receive_dates ?? []) as Array<{ date: string; amount: number }>;
+    setReceiveDates(Array.isArray(rawReceive) ? rawReceive : []);
 
     // Saldo — busca conta "Carteira" ou usa soma de todas
     const accounts = accountsRes.data || [];
@@ -603,13 +384,8 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // Carregar receiveDates do localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("finapp_receive_dates");
-      if (saved) setReceiveDates(JSON.parse(saved));
-    } catch {}
-  }, []);
+  // Debounce do save de receiveDates pro Supabase
+  const receiveDatesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function handleSaveBalance(newBalance: number) {
     const supabase = createClient();
@@ -632,9 +408,13 @@ export default function DashboardPage() {
 
   function handleReceiveDatesChange(dates: Array<{ date: string; amount: number }>) {
     setReceiveDates(dates);
-    try {
-      localStorage.setItem("finapp_receive_dates", JSON.stringify(dates));
-    } catch {}
+    if (receiveDatesSaveTimer.current) clearTimeout(receiveDatesSaveTimer.current);
+    receiveDatesSaveTimer.current = setTimeout(async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from("profiles").update({ receive_dates: dates }).eq("id", user.id);
+    }, 400);
   }
 
   const tooltipStyle = {
@@ -645,7 +425,7 @@ export default function DashboardPage() {
   return (
     <AppShell>
       {loading ? (
-        <div className="text-white/45">Carregando...</div>
+        <DashboardSkeleton />
       ) : (
         <div className="space-y-5">
           {/* ── 3 Summary Cards ── */}
@@ -905,7 +685,7 @@ export default function DashboardPage() {
 
       {/* ── FAB: Novo gasto rapido ── */}
       <button
-        onClick={openQuickAdd}
+        onClick={() => setShowQuickAdd(true)}
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 rounded-full bg-[#6366F1] hover:bg-[#4F46E5] text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
         title="Novo gasto"
         aria-label="Novo gasto"
@@ -913,137 +693,12 @@ export default function DashboardPage() {
         <Plus size={26} />
       </button>
 
-      {/* ── Toast do Quick Add ── */}
-      {qToast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] glass px-5 py-3 text-sm text-green-400">
-          {qToast}
-        </div>
-      )}
-
-      {/* ── Modal: Quick Add (FAB) ── */}
-      {showQuickAdd && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowQuickAdd(false)} />
-          <form onSubmit={handleQuickAddSubmit} className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-bold">{qType === "income" ? "Nova receita" : "Novo gasto"}</h2>
-              <button type="button" onClick={() => setShowQuickAdd(false)} className="text-white/45 hover:text-white p-1">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div>
-              <label className="label-upper block mb-2">Tipo</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setQType("expense")}
-                  className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                    qType === "expense" ? "bg-red-500/20 text-red-400 border border-red-500/50" : "glass-btn text-white/60"
-                  }`}>Despesa</button>
-                <button type="button" onClick={() => setQType("income")}
-                  className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                    qType === "income" ? "bg-green-500/20 text-green-400 border border-green-500/50" : "glass-btn text-white/60"
-                  }`}>Receita</button>
-              </div>
-            </div>
-
-            {qType === "expense" && (
-              <div>
-                <label className="label-upper block mb-2">Forma de pagamento</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setQMethod("pix")}
-                    className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                      qMethod === "pix" ? "bg-[#6366F1]/20 text-[#818CF8] border border-[#6366F1]/50" : "glass-btn text-white/60"
-                    }`}>PIX / Débito</button>
-                  <button type="button" onClick={() => {
-                      if (cardsForQuickAdd.length === 0) { quickToast("Cadastre um cartão primeiro"); return; }
-                      setQMethod("card");
-                      if (!qCardId) setQCardId(cardsForQuickAdd[0].id);
-                    }}
-                    className={`py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                      qMethod === "card" ? "bg-[#6366F1]/20 text-[#818CF8] border border-[#6366F1]/50" : "glass-btn text-white/60"
-                    }`}>
-                    <CreditCard size={14} /> Cartão
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {qType === "expense" && qMethod === "card" && cardsForQuickAdd.length > 0 && (
-              <div>
-                <label className="label-upper block mb-1">Cartão</label>
-                <select required value={qCardId} onChange={(e) => setQCardId(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white">
-                  {cardsForQuickAdd.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-[#1a1a2e]">{c.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="label-upper block mb-1">Descrição</label>
-              <input required value={qDesc} onChange={(e) => setQDesc(e.target.value)}
-                className="w-full glass-input px-3 py-3 text-base text-white"
-                placeholder="Ex: Mercado, Uber, Salário..." />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label-upper block mb-1">Valor</label>
-                <input required type="number" step="0.01" min="0.01" value={qAmount}
-                  onChange={(e) => setQAmount(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white" placeholder="0,00" />
-              </div>
-              <div>
-                <label className="label-upper block mb-1">Data</label>
-                <input required type="date" value={qDate} onChange={(e) => setQDate(e.target.value)}
-                  className="w-full glass-input px-3 py-3 text-base text-white" />
-              </div>
-            </div>
-
-            <div>
-              <label className="label-upper block mb-1">Categoria</label>
-              <select value={qCategory} onChange={(e) => setQCategory(e.target.value)}
-                className="w-full glass-input px-3 py-3 text-base text-white">
-                {catList.map((c) => (
-                  <option key={c.name} value={c.name} className="bg-[#1a1a2e]">{c.label}</option>
-                ))}
-              </select>
-            </div>
-
-            {qType === "expense" && qMethod === "card" && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" checked={qInstallments} onChange={(e) => setQInstallments(e.target.checked)}
-                    className="w-5 h-5 rounded accent-[#6366F1]" id="q-installments" />
-                  <label htmlFor="q-installments" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
-                    <Layers size={14} className="text-white/45" /> Parcelado
-                  </label>
-                </div>
-                {qInstallments && (
-                  <div className="glass-card p-3 space-y-2">
-                    <label className="label-upper block">Número de parcelas</label>
-                    <input type="number" min="2" max="48" value={qNumInstallments}
-                      onChange={(e) => setQNumInstallments(e.target.value)}
-                      className="w-full glass-input px-3 py-2.5 text-sm text-white" />
-                    {qAmount && (
-                      <p className="text-xs text-[#818CF8] flex items-center gap-1.5">
-                        <Layers size={12} />
-                        {qNumInstallments}x de {formatCurrency(parseFloat(qAmount) / parseInt(qNumInstallments || "1"))}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <button type="submit" disabled={qSaving}
-              className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
-              {qSaving ? "Salvando..." : "Adicionar"}
-            </button>
-          </form>
-        </div>
-      )}
+      <QuickAddModal
+        open={showQuickAdd}
+        onClose={() => setShowQuickAdd(false)}
+        onAdded={loadDashboard}
+        cards={cardsForQuickAdd}
+      />
 
       {/* ── Modal: Saldo Atual ── */}
       <BalanceModal

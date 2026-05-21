@@ -7,6 +7,7 @@ import { getCategoryConfig } from "@/lib/categories";
 import { useCategories } from "@/lib/useCategories";
 import type { Transaction, CardTransaction, CreditCard } from "@/lib/types";
 import AppShell from "@/components/AppShell";
+import { ListSkeleton } from "@/components/Skeleton";
 import { Plus, X, CreditCard as CreditCardIcon, Layers, Pencil, Trash2 } from "lucide-react";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
 import { updateWalletBalance } from "@/lib/wallet";
@@ -461,7 +462,7 @@ export default function TransactionsPage() {
 
       {/* List */}
       {loading ? (
-        <p className="text-white/45">Carregando...</p>
+        <ListSkeleton rows={6} />
       ) : rows.length === 0 ? (
         <p className="text-white/30">Nenhum gasto encontrado.</p>
       ) : (

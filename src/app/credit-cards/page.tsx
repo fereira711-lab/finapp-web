@@ -8,6 +8,7 @@ import { getCategoryConfig } from "@/lib/categories";
 import { useCategories } from "@/lib/useCategories";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
 import AppShell from "@/components/AppShell";
+import { ListSkeleton } from "@/components/Skeleton";
 import {
   Plus,
   ChevronLeft,
@@ -562,7 +563,7 @@ export default function CreditCardsPage() {
       </div>
 
       {loading ? (
-        <p className="text-white/45">Carregando...</p>
+        <ListSkeleton rows={3} />
       ) : cards.length === 0 ? (
         <div className="text-center py-16 space-y-4">
           <CreditCardIcon size={48} className="mx-auto text-white/20" />

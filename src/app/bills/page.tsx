@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Bill, CardTransaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
+import { ListSkeleton } from "@/components/Skeleton";
 import {
   Plus,
   Check,
@@ -571,7 +572,7 @@ export default function BillsPage() {
             <p className="text-xs text-white/40 mb-4">{MONTH_NAMES[selectedMonth]} {selectedYear}</p>
 
             {cardDetailLoading ? (
-              <p className="text-white/45 py-4">Carregando...</p>
+              <ListSkeleton rows={4} />
             ) : cardDetailTxs.length === 0 ? (
               <p className="text-white/30 py-4">Nenhum lancamento neste mes</p>
             ) : (
@@ -628,7 +629,7 @@ export default function BillsPage() {
 
       {/* Lista */}
       {loading ? (
-        <p className="text-white/45">Carregando...</p>
+        <ListSkeleton rows={6} />
       ) : !hasItems ? (
         <p className="text-white/30">Nenhuma conta encontrada.</p>
       ) : (

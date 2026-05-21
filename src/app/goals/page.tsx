@@ -7,6 +7,7 @@ import { getCategoryConfig } from "@/lib/categories";
 import { useCategories } from "@/lib/useCategories";
 import type { Goal } from "@/lib/types";
 import AppShell from "@/components/AppShell";
+import { ListSkeleton } from "@/components/Skeleton";
 import { Target, Plus, Pencil, Trash2, X } from "lucide-react";
 
 interface GoalWithSpent extends Goal {
@@ -147,7 +148,7 @@ export default function GoalsPage() {
   return (
     <AppShell>
       {loading ? (
-        <div className="text-white/45">Carregando...</div>
+        <ListSkeleton rows={4} />
       ) : (
         <div className="space-y-5">
           {/* Header */}
