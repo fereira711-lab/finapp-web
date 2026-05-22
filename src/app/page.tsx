@@ -15,8 +15,9 @@ import QuickAddModal from "@/components/dashboard/QuickAddModal";
 import {
   Wallet, FileText, Calculator,
   AlertTriangle, CreditCard, Target, X,
-  ArrowUpRight, ArrowDownRight, Lightbulb, Plus,
+  ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Trash2,
 } from "lucide-react";
+import { updateWalletBalance } from "@/lib/wallet";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
 } from "recharts";
@@ -31,9 +32,12 @@ type RecentTxRow = {
   category: string;
   date: string;
   type: "income" | "expense";
+  cardId?: string;
   cardName?: string;
   cardColor?: string;
   installmentLabel?: string;
+  installments?: number;
+  installmentCurrent?: number;
 };
 
 /* ── Dashboard ───────────────────────────────────── */
@@ -72,6 +76,17 @@ export default function DashboardPage() {
     id: string; name: string; color: string; status: string; closing_day: number; due_day: number;
   }>>([]);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+
+  // Delete confirmation (linha de Ultimas Transacoes)
+  const [deleteRow, setDeleteRow] = useState<RecentTxRow | null>(null);
+  const [deleteAllInst, setDeleteAllInst] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [delToast, setDelToast] = useState<string | null>(null);
+
+  function showDelToast(msg: string) {
+    setDelToast(msg);
+    setTimeout(() => setDelToast(null), 3000);
+  }
 
   // Valor Final = Saldo Atual (com recebimentos) - Contas a Pagar Pendentes
   const totalToReceive = receiveDates.reduce((s, d) => s + d.amount, 0);
@@ -294,9 +309,12 @@ export default function DashboardPage() {
         category: t.category,
         date: t.date,
         type: "expense",
+        cardId: t.card_id,
         cardName: c?.name,
         cardColor: c?.color,
         installmentLabel: t.installments > 1 ? `${t.installment_current}/${t.installments}` : undefined,
+        installments: t.installments,
+        installmentCurrent: t.installment_current,
       };
     });
     const merged = [...txRows, ...cardTxRows]
@@ -421,6 +439,64 @@ export default function DashboardPage() {
     background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)",
     border: "1px solid rgba(255,255,255,0.15)", borderRadius: "12px", color: "#fff",
   };
+
+  async function handleDeleteRow() {
+    if (!deleteRow) return;
+    setDeleting(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setDeleting(false); return; }
+
+    if (deleteRow.source === "transaction") {
+      const realId = deleteRow.id.replace(/^tx-/, "");
+      const { error } = await supabase.from("transactions").delete().eq("id", realId);
+      if (error) { setDeleting(false); showDelToast("Erro: " + error.message); return; }
+      const delta = deleteRow.type === "income" ? -deleteRow.amount : deleteRow.amount;
+      await updateWalletBalance(supabase, user.id, delta);
+      showDelToast("Excluido");
+    } else {
+      const realId = deleteRow.id.replace(/^card-/, "");
+      const cardName = deleteRow.cardName || "";
+      const cardId = deleteRow.cardId;
+
+      const { data: tx } = await supabase.from("card_transactions").select("*").eq("id", realId).single();
+      if (!tx) { setDeleting(false); showDelToast("Lancamento nao encontrado"); return; }
+
+      if (deleteAllInst && tx.installments > 1 && cardId) {
+        const { data: siblings } = await supabase
+          .from("card_transactions").select("id")
+          .eq("card_id", cardId)
+          .eq("description", tx.description)
+          .eq("installments", tx.installments)
+          .eq("user_id", user.id);
+        if (siblings && siblings.length > 0) {
+          await supabase.from("card_transactions").delete().in("id", siblings.map((s) => s.id));
+        }
+        await supabase.from("bills").delete()
+          .eq("user_id", user.id)
+          .eq("notes", `card:${cardId}`)
+          .like("description", `${cardName} - ${tx.description}%`);
+        showDelToast("Parcelas removidas");
+      } else {
+        await supabase.from("card_transactions").delete().eq("id", realId);
+        if (cardId) {
+          const billDescPattern = tx.installments > 1
+            ? `${cardName} - ${tx.description} ${tx.installment_current}/${tx.installments}`
+            : `${cardName} - ${tx.description}`;
+          await supabase.from("bills").delete()
+            .eq("user_id", user.id)
+            .eq("notes", `card:${cardId}`)
+            .eq("description", billDescPattern);
+        }
+        showDelToast("Lancamento removido");
+      }
+    }
+
+    setDeleteRow(null);
+    setDeleteAllInst(false);
+    setDeleting(false);
+    await loadDashboard();
+  }
 
   return (
     <AppShell>
@@ -671,9 +747,19 @@ export default function DashboardPage() {
                           </p>
                         </div>
                       </div>
-                      <span className={`text-sm font-bold flex-shrink-0 ml-3 ${isIncome ? "text-green-400" : "text-red-400"}`}>
-                        {isIncome ? "+" : "-"}{formatCurrency(t.amount)}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                        <span className={`text-sm font-bold ${isIncome ? "text-green-400" : "text-red-400"}`}>
+                          {isIncome ? "+" : "-"}{formatCurrency(t.amount)}
+                        </span>
+                        <button
+                          onClick={() => { setDeleteRow(t); setDeleteAllInst(false); }}
+                          className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                          title="Excluir"
+                          aria-label="Excluir"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -692,6 +778,71 @@ export default function DashboardPage() {
       >
         <Plus size={26} />
       </button>
+
+      {/* ── Toast delete ── */}
+      {delToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[80] glass px-5 py-3 text-sm text-green-400">
+          {delToast}
+        </div>
+      )}
+
+      {/* ── Modal: Confirmar exclusao ── */}
+      {deleteRow && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteRow(null)} />
+          <div className="relative glass p-5 w-full max-w-sm space-y-4">
+            <h2 className="text-lg font-bold">Excluir lançamento?</h2>
+            <div className="text-sm text-white/60 space-y-1">
+              <p className="font-medium text-white">{deleteRow.description}</p>
+              <p className="text-xs text-white/40">
+                {formatDate(deleteRow.date)} · {formatCurrency(deleteRow.amount)}
+                {deleteRow.installmentLabel && ` · ${deleteRow.installmentLabel}`}
+                {deleteRow.cardName && ` · ${deleteRow.cardName}`}
+              </p>
+            </div>
+
+            {deleteRow.source === "transaction" && (
+              <p className="text-xs text-white/45">
+                {deleteRow.type === "income"
+                  ? "O valor será removido do Saldo Atual."
+                  : "O valor será devolvido ao Saldo Atual."}
+              </p>
+            )}
+
+            {deleteRow.source === "card" && deleteRow.installments && deleteRow.installments > 1 && (
+              <div className="flex items-center gap-2 p-3 glass-card">
+                <input
+                  type="checkbox"
+                  id="dash-del-all-inst"
+                  checked={deleteAllInst}
+                  onChange={(e) => setDeleteAllInst(e.target.checked)}
+                  className="w-5 h-5 rounded accent-[#6366F1]"
+                />
+                <label htmlFor="dash-del-all-inst" className="text-xs text-white/70 cursor-pointer">
+                  Excluir <span className="font-bold">todas as parcelas</span> e contas vinculadas
+                </label>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <button
+                onClick={handleDeleteRow}
+                disabled={deleting}
+                className="w-full bg-red-500/20 text-red-400 text-sm font-medium py-3 rounded-xl hover:bg-red-500/30 transition-colors disabled:opacity-50"
+              >
+                {deleting ? "Excluindo..." : "Excluir"}
+              </button>
+              <button
+                onClick={() => setDeleteRow(null)}
+                disabled={deleting}
+                className="w-full text-white/40 text-sm py-2"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <QuickAddModal
         open={showQuickAdd}
