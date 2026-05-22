@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { updateWalletBalance } from "@/lib/wallet";
 import type { Bill, CardTransaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import { ListSkeleton } from "@/components/Skeleton";
@@ -339,6 +340,12 @@ export default function BillsPage() {
     setCardDetailLoading(false);
   }
 
+  // Efeito de uma bill no saldo (so se paga): payable=-amount, receivable=+amount, nao paga=0
+  function walletEffect(b: { status: string; type: string; amount: number }): number {
+    if (b.status !== "paid") return 0;
+    return b.type === "payable" ? -b.amount : b.amount;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -365,7 +372,15 @@ export default function BillsPage() {
       if (status === "pending" && dueDate < today) {
         billData.status = "overdue";
       }
+
+      // Ajusta saldo pelo delta entre efeito antigo e novo
+      const oldBill = bills.find((b) => b.id === editingId);
+      const oldEffect = oldBill ? walletEffect(oldBill) : 0;
+      const newEffect = walletEffect({ status: billData.status, type: billData.type, amount: billData.amount });
       await supabase.from("bills").update(billData).eq("id", editingId);
+      if (newEffect !== oldEffect) {
+        await updateWalletBalance(supabase, user.id, newEffect - oldEffect);
+      }
     } else {
       const today = new Date().toISOString().split("T")[0];
       if (status === "pending" && dueDate < today) { billData.status = "overdue"; }
@@ -392,15 +407,37 @@ export default function BillsPage() {
     if (!editingId) return;
     setSaving(true);
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Se a bill estava paga, reverte o efeito no saldo
+    const oldBill = bills.find((b) => b.id === editingId);
+    const oldEffect = oldBill ? walletEffect(oldBill) : 0;
+
     await supabase.from("bills").delete().eq("id", editingId);
+
+    if (user && oldEffect !== 0) {
+      await updateWalletBalance(supabase, user.id, -oldEffect);
+    }
+
     closeForm(); setSaving(false); setLoading(true); load();
   }
 
   async function markAsPaid(id: string) {
     setMarkingId(id);
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Carrega a bill para saber type/amount/status (so ajusta saldo se estava nao-paga)
+    const bill = bills.find((b) => b.id === id);
+
     await supabase.from("bills").update({ status: "paid" }).eq("id", id);
-    // BUG FIX #3: Recarregar dados para aplicar ordenação corretamente
+
+    if (user && bill && bill.status !== "paid") {
+      // payable paga = saiu dinheiro (-); receivable recebida = entrou (+)
+      const delta = bill.type === "payable" ? -bill.amount : bill.amount;
+      await updateWalletBalance(supabase, user.id, delta);
+    }
+
     setLoading(true);
     load();
     setMarkingId(null);
@@ -409,12 +446,22 @@ export default function BillsPage() {
   async function markCardGroupAsPaid(group: CardBillGroup) {
     setMarkingId(group.cardId);
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     const ids = group.bills.map((b) => b.id);
-    // Atualizar status das bills
+
     await supabase.from("bills").update({ status: "paid" }).in("id", ids);
-    // Atualizar status do cartão de crédito também
     await supabase.from("credit_cards").update({ status: "paid" }).eq("id", group.cardId);
-    // BUG FIX #3: Recarregar dados para aplicar ordenação corretamente
+
+    if (user) {
+      // Soma das bills que ainda nao estavam pagas
+      const totalDelta = group.bills
+        .filter((b) => b.status !== "paid")
+        .reduce((s, b) => s + (b.type === "payable" ? -b.amount : b.amount), 0);
+      if (totalDelta !== 0) {
+        await updateWalletBalance(supabase, user.id, totalDelta);
+      }
+    }
+
     setLoading(true);
     load();
     setMarkingId(null);
