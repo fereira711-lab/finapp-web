@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/register", "/api/auth/callback"];
+const PUBLIC_PATHS = [
+  "/login", "/register", "/api/auth/callback",
+  // PWA assets
+  "/manifest.webmanifest", "/icon", "/apple-icon",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

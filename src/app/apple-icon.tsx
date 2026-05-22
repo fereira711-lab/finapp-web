@@ -10,17 +10,64 @@ export default function AppleIcon() {
         style={{
           width: "100%",
           height: "100%",
-          background: "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)",
+          background: "linear-gradient(135deg, #818CF8 0%, #6366F1 50%, #4F46E5 100%)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#fff",
-          fontSize: 100,
-          fontWeight: 900,
-          letterSpacing: -3,
+          position: "relative",
         }}
       >
-        F$
+        {/* Glow */}
+        <div
+          style={{
+            position: "absolute",
+            width: 130,
+            height: 130,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 70%)",
+          }}
+        />
+        {/* F */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 120,
+            height: 120,
+            fontSize: 120,
+            fontWeight: 900,
+            color: "#fff",
+            letterSpacing: -8,
+            lineHeight: 1,
+            textShadow: "0 3px 10px rgba(0,0,0,0.25)",
+            marginTop: -8,
+          }}
+        >
+          F
+        </div>
+        {/* $ verde */}
+        <div
+          style={{
+            position: "absolute",
+            right: 30,
+            bottom: 30,
+            width: 50,
+            height: 50,
+            borderRadius: "50%",
+            background: "#10B981",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 38,
+            fontWeight: 900,
+            color: "#fff",
+            boxShadow: "0 3px 8px rgba(0,0,0,0.35)",
+            border: "3px solid rgba(255,255,255,0.95)",
+          }}
+        >
+          $
+        </div>
       </div>
     ),
     { ...size },
