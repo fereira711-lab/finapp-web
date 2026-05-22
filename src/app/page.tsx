@@ -18,6 +18,7 @@ import {
   ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Trash2,
 } from "lucide-react";
 import { updateWalletBalance } from "@/lib/wallet";
+import { materializeRecurringTemplates } from "@/lib/recurring";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
 } from "recharts";
@@ -101,6 +102,9 @@ export default function DashboardPage() {
       setLoading(false);
       return;
     }
+
+    // Materializa templates recorrentes do mes (se houver pendentes)
+    try { await materializeRecurringTemplates(supabase, user.id); } catch (e) { console.warn("recurring materialize failed", e); }
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();

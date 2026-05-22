@@ -77,3 +77,19 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+export interface RecurringTemplate {
+  id: string;
+  user_id: string;
+  type: "income" | "expense";
+  method: "pix" | "card" | null;
+  card_id: string | null;
+  description: string;
+  amount: number;
+  category: string;
+  day_of_month: number;
+  active: boolean;
+  last_materialized_year: number | null;
+  last_materialized_month: number | null;
+  created_at: string;
+}
