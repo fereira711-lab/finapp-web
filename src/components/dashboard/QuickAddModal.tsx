@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/format";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
 import { updateWalletBalance } from "@/lib/wallet";
+import { applyCategoryRules } from "@/lib/categoryRules";
 import { useCategories } from "@/lib/useCategories";
 
 export type QuickAddCard = {
@@ -53,6 +54,13 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
     const totalAmount = parseFloat(amount);
     const isCard = type === "expense" && method === "card";
 
+    // Auto-categoria se usuario deixou em "outros"
+    let resolvedCategory = category;
+    if (category === "outros") {
+      const auto = await applyCategoryRules(supabase, user.id, desc.trim());
+      if (auto) resolvedCategory = auto;
+    }
+
     if (isCard) {
       const card = cards.find((c) => c.id === cardId);
       if (!card) { setSaving(false); showToast("Selecione um cartão"); return; }
@@ -69,7 +77,7 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
           description: desc.trim(), amount: installmentAmount,
           date, bill_date: period.billDate,
           installments: numInst, installment_current: i + 1,
-          category,
+          category: resolvedCategory,
         });
         const billDesc = numInst > 1
           ? `${card.name} - ${desc.trim()} ${i + 1}/${numInst}`
@@ -89,7 +97,7 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
         user_id: user.id,
         description: desc.trim(),
         amount: totalAmount,
-        category,
+        category: resolvedCategory,
         date,
         type,
         status: "completed",

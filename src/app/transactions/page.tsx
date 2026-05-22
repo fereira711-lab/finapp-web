@@ -11,6 +11,7 @@ import { ListSkeleton } from "@/components/Skeleton";
 import { Plus, X, CreditCard as CreditCardIcon, Layers, Pencil, Trash2 } from "lucide-react";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
 import { updateWalletBalance } from "@/lib/wallet";
+import { applyCategoryRules } from "@/lib/categoryRules";
 
 const PERIODS = [
   { label: "Este mês", value: "current" },
@@ -238,6 +239,13 @@ export default function TransactionsPage() {
     const isCardExpense = fType === "expense" && fMethod === "card";
     const totalAmount = parseFloat(fAmount);
 
+    // Aplica regras de categoria se nao for edicao (edicao mantem categoria escolhida pelo usuario)
+    let resolvedCategory = fCategory;
+    if (!editingTxId) {
+      const auto = await applyCategoryRules(supabase, user.id, fDesc.trim());
+      if (auto && fCategory === "outros") resolvedCategory = auto;
+    }
+
     if (isCardExpense) {
       if (!fCardId) { setSaving(false); showToast("Selecione um cartao"); return; }
       const card = cards.find((c) => c.id === fCardId);
@@ -258,7 +266,7 @@ export default function TransactionsPage() {
           date: fDate, // data real da compra
           bill_date: period.billDate, // mes da fatura
           installments: numInst, installment_current: i + 1,
-          category: fCategory,
+          category: resolvedCategory,
         });
 
         const billDesc = numInst > 1
@@ -307,7 +315,7 @@ export default function TransactionsPage() {
           user_id: user.id,
           description: fDesc.trim(),
           amount: totalAmount,
-          category: fCategory,
+          category: resolvedCategory,
           date: fDate,
           type: fType,
           status: "completed",

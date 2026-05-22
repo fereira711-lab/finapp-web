@@ -78,6 +78,15 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface CategoryRule {
+  id: string;
+  user_id: string;
+  pattern: string;
+  category: string;
+  priority: number;
+  created_at: string;
+}
+
 export interface RecurringTemplate {
   id: string;
   user_id: string;

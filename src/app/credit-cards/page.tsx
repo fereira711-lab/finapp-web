@@ -7,6 +7,7 @@ import type { CreditCard, CardTransaction } from "@/lib/types";
 import { getCategoryConfig } from "@/lib/categories";
 import { useCategories } from "@/lib/useCategories";
 import { computeBilling, addMonths } from "@/lib/cardBilling";
+import { applyCategoryRules } from "@/lib/categoryRules";
 import AppShell from "@/components/AppShell";
 import { ListSkeleton } from "@/components/Skeleton";
 import {
@@ -350,7 +351,13 @@ export default function CreditCardsPage() {
     if (!user) { setSavingTx(false); return; }
 
     const card = cards[activeCardIdx];
-    const resolvedCategory = txCategory === "_custom" ? txCustomCategory.trim().toLowerCase() : txCategory;
+    let resolvedCategory = txCategory === "_custom" ? txCustomCategory.trim().toLowerCase() : txCategory;
+
+    // Aplica regras automaticas se nao for edicao e usuario deixou em "outros"
+    if (!editingTxId && resolvedCategory === "outros") {
+      const auto = await applyCategoryRules(supabase, user.id, txDesc.trim());
+      if (auto) resolvedCategory = auto;
+    }
 
     // === EDIT MODE ===
     if (editingTxId && editingTxOriginal) {
