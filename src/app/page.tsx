@@ -15,7 +15,7 @@ import QuickAddModal from "@/components/dashboard/QuickAddModal";
 import {
   Wallet, FileText, Calculator,
   AlertTriangle, CreditCard, Target, X,
-  ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Trash2,
+  ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Trash2, Check,
 } from "lucide-react";
 import { updateWalletBalance } from "@/lib/wallet";
 import { materializeRecurringTemplates } from "@/lib/recurring";
@@ -529,6 +529,110 @@ export default function DashboardPage() {
               icon={<Calculator size={16} />}
               color={valorFinal >= 0 ? "text-green-400" : "text-red-400"} />
           </div>
+
+          {/* ── Esta Semana ── */}
+          {(() => {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const in6 = new Date(today); in6.setDate(today.getDate() + 6);
+            const now = new Date();
+
+            type WeekItem = {
+              key: string;
+              name: string;
+              dueDate: Date;
+              amount: number;
+              isCard: boolean;
+            };
+
+            const items: WeekItem[] = [];
+
+            for (const b of pendingBills) {
+              const d = new Date(b.due_date + "T12:00:00"); d.setHours(0, 0, 0, 0);
+              if (d <= in6) {
+                items.push({ key: `b-${b.id}`, name: b.description, dueDate: d, amount: b.amount, isCard: false });
+              }
+            }
+
+            for (let i = 0; i < pendingCardItems.length; i++) {
+              const c = pendingCardItems[i];
+              const d = new Date(now.getFullYear(), now.getMonth(), c.dueDay);
+              d.setHours(0, 0, 0, 0);
+              if (d <= in6) {
+                items.push({ key: `c-${i}-${c.name}`, name: c.name, dueDate: d, amount: c.amount, isCard: true });
+              }
+            }
+
+            items.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+
+            const fmt = (d: Date) =>
+              `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+            const weekLabel = `${fmt(today)} - ${fmt(in6)}`;
+            const total = items.reduce((s, it) => s + it.amount, 0);
+
+            return (
+              <div className="glass-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h2 className="text-sm font-semibold">Esta Semana</h2>
+                    <p className="text-[10px] text-white/30 mt-0.5">{weekLabel}</p>
+                  </div>
+                  <FileText size={16} className="text-yellow-400" />
+                </div>
+
+                {items.length === 0 ? (
+                  <p className="text-xs text-green-400 flex items-center gap-1.5 py-1">
+                    <Check size={14} /> Nenhuma conta vencendo esta semana
+                  </p>
+                ) : (
+                  <div className="space-y-2.5 mb-3">
+                    {items.map((item) => {
+                      const diff = Math.round((item.dueDate.getTime() - today.getTime()) / 86400000);
+                      let badge: React.ReactNode = null;
+                      if (diff < 0) {
+                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-900/50 text-red-400">Atrasada</span>;
+                      } else if (diff === 0) {
+                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-500/20 text-red-400">Hoje</span>;
+                      } else if (diff === 1) {
+                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-orange-500/20 text-orange-400">Amanhã</span>;
+                      } else if (diff <= 3) {
+                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-yellow-500/20 text-yellow-400">{diff} dias</span>;
+                      }
+
+                      return (
+                        <div key={item.key} className="flex items-center justify-between">
+                          <div className="min-w-0 flex-1 flex items-center gap-2">
+                            {item.isCard && <CreditCard size={11} className="text-[#6366F1] flex-shrink-0" />}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-xs font-medium truncate">{item.name}</p>
+                                {badge}
+                              </div>
+                              <p className="text-[10px] text-white/30">{fmt(item.dueDate)}</p>
+                            </div>
+                          </div>
+                          <span className={`text-xs font-bold flex-shrink-0 ml-2 ${diff < 0 ? "text-red-400" : "text-yellow-400"}`}>
+                            {formatCurrency(item.amount)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {items.length > 0 && (
+                  <div className="flex items-center justify-between py-2 border-t border-white/10 mb-3">
+                    <span className="text-[11px] text-white/40">Total da semana</span>
+                    <span className="text-xs font-bold text-yellow-400">{formatCurrency(total)}</span>
+                  </div>
+                )}
+
+                <Link href="/bills" onClick={() => setShowPendingModal(false)}
+                  className="block text-center glass-btn py-2 text-xs">
+                  Ver todas as contas
+                </Link>
+              </div>
+            );
+          })()}
 
           {/* ── Receitas + Despesas com variacao ── */}
           <div className="grid grid-cols-2 gap-3">
