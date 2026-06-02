@@ -23,6 +23,7 @@ import {
   CreditCard,
   ExternalLink,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -128,6 +129,19 @@ interface CardBillGroup {
   count: number;
 }
 
+type BillListItem = { type: "bill"; data: Bill } | { type: "card"; data: CardBillGroup };
+
+interface WeekBucket {
+  index: number;
+  start: Date;
+  end: Date;
+  items: BillListItem[];
+  totalPayable: number;
+  hasUrgent: boolean;
+  isPast: boolean;
+  isCurrent: boolean;
+}
+
 export default function BillsPage() {
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -142,6 +156,7 @@ export default function BillsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [creditCards, setCreditCards] = useState<Record<string, { status: "pending" | "paid" | "overdue" }>>({});
+  const [openWeeks, setOpenWeeks] = useState<Set<number>>(new Set());
 
   const [desc, setDesc] = useState("");
   const [amount, setAmount] = useState("");
@@ -248,8 +263,7 @@ export default function BillsPage() {
     cardGroupList.sort((a, b) => compareItems(a.status, a.dueDate, b.status, b.dueDate));
 
     // Mesclar em uma única lista ordenada
-    type ListItem = { type: "bill"; data: Bill } | { type: "card"; data: CardBillGroup };
-    const merged: ListItem[] = [];
+    const merged: BillListItem[] = [];
 
     let regIdx = 0, cardIdx = 0;
     while (regIdx < regular.length || cardIdx < cardGroupList.length) {
@@ -270,6 +284,70 @@ export default function BillsPage() {
 
     return { regularBills: regular, cardGroups: cardGroupList, allItems: merged };
   }, [bills, creditCards]);
+
+  // Divide o mês em semanas (1-7, 8-14, 15-21, 22-fim) e distribui as contas
+  const weeks = useMemo<WeekBucket[]>(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    const ranges: [number, number][] = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+
+    const buckets: WeekBucket[] = ranges.map(([s, e], i) => ({
+      index: i + 1,
+      start: new Date(selectedYear, selectedMonth, s),
+      end: new Date(selectedYear, selectedMonth, e),
+      items: [],
+      totalPayable: 0,
+      hasUrgent: false,
+      isPast: false,
+      isCurrent: false,
+    }));
+
+    for (const item of allItems) {
+      const dueStr = item.type === "card" ? item.data.dueDate : item.data.due_date;
+      const d = new Date(dueStr + "T12:00:00");
+      if (d.getFullYear() !== selectedYear || d.getMonth() !== selectedMonth) continue;
+      const day = d.getDate();
+      const idx = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
+      const bucket = buckets[idx];
+      bucket.items.push(item);
+
+      const status = item.data.status;
+      const isPayable = item.type === "card" || item.data.type === "payable";
+      const amount = item.type === "card" ? item.data.totalAmount : item.data.amount;
+      if (isPayable && status !== "paid") bucket.totalPayable += amount;
+
+      if (status !== "paid") {
+        const dueMid = new Date(selectedYear, selectedMonth, day).getTime();
+        const diffDays = Math.round((dueMid - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays <= 2) bucket.hasUrgent = true;
+      }
+    }
+
+    for (const b of buckets) {
+      b.isPast = b.end < today;
+      b.isCurrent = today >= b.start && today <= b.end;
+    }
+    return buckets;
+  }, [allItems, selectedYear, selectedMonth]);
+
+  // Semana atual expandida por padrão (ou semana 1 ao navegar para outro mês)
+  useEffect(() => {
+    const today = new Date();
+    let def = 1;
+    if (today.getFullYear() === selectedYear && today.getMonth() === selectedMonth) {
+      const day = today.getDate();
+      def = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
+    }
+    setOpenWeeks(new Set([def]));
+  }, [selectedYear, selectedMonth]);
+
+  function toggleWeek(i: number) {
+    setOpenWeeks((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  }
 
   // Apply filter
   const filteredItems = allItems.filter((item) => {
@@ -514,6 +592,88 @@ export default function BillsPage() {
       <p className="text-[11px] text-white/30 mb-4 glass-divider pb-4">
         {paidCount} pagas · {pendingCount} pendentes · {overdueCount} atrasadas
       </p>
+
+      {/* Visualização por semana */}
+      {!loading && (
+        <div className="mb-5">
+          <h3 className="label-upper mb-2">Por Semana</h3>
+          <div className="space-y-2">
+            {weeks.map((w) => {
+              const isOpen = openWeeks.has(w.index);
+              const fmt = (d: Date) =>
+                `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+              return (
+                <div key={w.index}
+                  className={`glass-card overflow-hidden transition-opacity ${w.isPast && !isOpen ? "opacity-50" : ""}`}>
+                  <button onClick={() => toggleWeek(w.index)}
+                    className="w-full flex items-center justify-between p-3 text-left">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ChevronDown size={16}
+                        className={`text-white/40 transition-transform flex-shrink-0 ${isOpen ? "" : "-rotate-90"}`} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold">Semana {w.index}</span>
+                          {w.isCurrent && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider">
+                              Atual
+                            </span>
+                          )}
+                          {w.hasUrgent && (
+                            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-400 text-[10px] uppercase tracking-wider">
+                              <AlertTriangle size={10} /> Vence
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-white/40 mt-0.5">
+                          {fmt(w.start)} - {fmt(w.end)} · {w.items.length} conta{w.items.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-red-400 flex-shrink-0 ml-2">
+                      {formatCurrency(w.totalPayable)}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="px-3 pb-3 space-y-1">
+                      {w.items.length === 0 ? (
+                        <p className="text-[11px] text-white/25 py-1">Nenhuma conta nesta semana</p>
+                      ) : (
+                        w.items.map((item) => {
+                          const isCard = item.type === "card";
+                          const name = item.type === "card" ? item.data.cardName : item.data.description;
+                          const amount = item.type === "card" ? item.data.totalAmount : item.data.amount;
+                          const dd = item.type === "card" ? item.data.dueDate : item.data.due_date;
+                          const st = item.data.status;
+                          const isReceivable = item.type === "bill" && item.data.type === "receivable";
+                          const dl = getDueDateLabel(dd, st);
+                          const key = item.type === "card" ? `wk-card-${item.data.cardId}` : `wk-bill-${item.data.id}`;
+                          return (
+                            <div key={key}
+                              className="flex items-center justify-between py-1.5 glass-divider last:border-0">
+                              <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                                {isCard && <CreditCard size={11} className="text-[#6366F1] flex-shrink-0" />}
+                                <div className="min-w-0">
+                                  <p className="text-xs font-medium truncate">{name}</p>
+                                  <p className={`text-[10px] ${dl.color}`}>{dl.text}</p>
+                                </div>
+                              </div>
+                              <span className={`text-xs font-bold flex-shrink-0 ml-2 ${
+                                isReceivable ? "text-green-400" : st === "paid" ? "text-white/40" : "text-white"
+                              }`}>
+                                {isReceivable ? "+" : "-"}{formatCurrency(amount)}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Modal Criar/Editar */}
       {showForm && (

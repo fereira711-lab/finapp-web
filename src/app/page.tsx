@@ -122,7 +122,7 @@ export default function DashboardPage() {
       supabase.from("accounts").select("id, balance, name").eq("user_id", user.id),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
-      supabase.from("bills").select("amount, type, status").eq("user_id", user.id)
+      supabase.from("bills").select("amount, type, status, notes").eq("user_id", user.id)
         .gte("due_date", startStr).lte("due_date", endStr),
       // recentTxRes: ultimas transactions
       supabase.from("transactions").select("*")
@@ -188,7 +188,11 @@ export default function DashboardPage() {
 
     // Contas a pagar pendentes (apenas payable e status !== paid)
     const allBills = (billsRes.data || []);
-    const payableBills = allBills.filter((b) => b.type === "payable" && b.status !== "paid");
+    // Exclui bills geradas automaticamente pelo cartao (notes "card:..."), pois esse valor
+    // ja entra via card_transactions agrupadas (cartaoPayable). Evita contagem duplicada.
+    const payableBills = allBills.filter(
+      (b) => b.type === "payable" && b.status !== "paid" && !(b.notes && b.notes.startsWith("card:"))
+    );
 
     // Cartões a pagar (apenas os com status "pending" ou "overdue")
     const unpaidCards = creditCards.filter((c) => c.status === "pending" || c.status === "overdue");
@@ -218,7 +222,9 @@ export default function DashboardPage() {
 
     const totalPending = payableBills.reduce((s, b) => s + b.amount, 0) + cartaoPayable;
     setPendingBillsTotal(totalPending);
-    setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter((b) => b.type === "payable" && b.status !== "paid"));
+    setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter(
+      (b) => b.type === "payable" && b.status !== "paid" && !(b.notes && b.notes.startsWith("card:"))
+    ));
     setPendingCardItems(cardItems);
 
     // Gráfico APENAS cartão (apenas cartões não pagos)
