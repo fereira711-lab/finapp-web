@@ -128,7 +128,7 @@ export default function TransactionsPage() {
       amount: Math.abs(t.amount),
       category: t.category,
       date: t.date,
-      type: (t.type === "income" || t.amount > 0) ? "income" : "expense",
+      type: t.type === "income" ? "income" : "expense",
     }));
 
     const cardRows: UnifiedRow[] = (cardTxRes.data || []).map((t: CardTransaction) => {
@@ -298,7 +298,7 @@ export default function TransactionsPage() {
         // EDIT MODE: ajusta saldo pelo delta entre original e novo
         const { error } = await supabase.from("transactions").update({
           description: fDesc.trim(),
-          amount: totalAmount,
+          amount: fType === "income" ? totalAmount : -totalAmount,
           category: fCategory,
           date: fDate,
           type: fType,
@@ -314,7 +314,7 @@ export default function TransactionsPage() {
         const { error } = await supabase.from("transactions").insert({
           user_id: user.id,
           description: fDesc.trim(),
-          amount: totalAmount,
+          amount: fType === "income" ? totalAmount : -totalAmount,
           category: resolvedCategory,
           date: fDate,
           type: fType,
