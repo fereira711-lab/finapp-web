@@ -1,3 +1,33 @@
+# CLAUDE.md — Instruções de comportamento
+
+## Regras obrigatórias
+
+- Leia o AGENT.md antes de qualquer ação
+- Respostas curtas e diretas — sem introduções, sem resumos no final
+- Mostre só o que foi alterado — não repita código que não mudou
+- Não peça confirmação para ações simples — execute direto
+- Não liste "o que foi feito" após cada tarefa — só avise se der erro
+- Prefira edições pontuais a reescrever arquivos inteiros
+- Nunca commite sem autorização explícita
+- Valide sintaxe antes de reportar como concluído
+
+## Sobre tokens
+
+- Não leia arquivos desnecessários — use o AGENT.md como referência
+- Não repita contexto que já está no AGENT.md
+- Respostas de confirmação: máximo 2 linhas
+- Erros: mostre só o erro e a correção, sem explicação longa
+
+## Fluxo padrão de trabalho
+
+1. Lê AGENT.md
+2. Executa a tarefa
+3. Valida sintaxe
+4. Reporta em 1-2 linhas
+5. Aguarda próxima instrução
+
+---
+
 # 💰 finapp-web — Instruções do Projeto
 
 ## 1. CONTEXTO
