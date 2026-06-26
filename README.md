@@ -56,6 +56,31 @@ npm run dev
 
 Ver `.env.example`.
 
+Variaveis identificadas hoje:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `PLUGGY_CLIENT_ID`
+- `PLUGGY_CLIENT_SECRET`
+- `PLUGGY_WEBHOOK_SECRET`
+- `ANTHROPIC_API_KEY`
+
+Leitura operacional atual das rotas sensiveis:
+
+- `ai-chat`: usa `ANTHROPIC_API_KEY`, exige usuario autenticado e consulta dados financeiros via Supabase no servidor;
+- `notifications/check`: exige usuario autenticado e consulta contas a pagar via sessao server-side;
+- `pluggy-token`: usa `PLUGGY_CLIENT_ID` e `PLUGGY_CLIENT_SECRET` para gerar token de conexao;
+- `webhooks/pluggy`: usa `PLUGGY_WEBHOOK_SECRET` e `SUPABASE_SERVICE_ROLE_KEY` para validar assinatura e persistir transacoes;
+- `auth/callback`: troca o `code` por sessao Supabase no servidor.
+
+Camada Supabase atual:
+
+- `src/lib/supabase/client.ts`: cliente browser com chaves publicas;
+- `src/lib/supabase/server.ts`: cliente server-side com cookies de sessao e chave anonima publica;
+- `src/lib/supabase/middleware.ts`: atualiza sessao e protege rotas privadas;
+- `SUPABASE_SERVICE_ROLE_KEY` fica restrita ao webhook Pluggy.
+
 ## Observacoes
 
 - este repositório usa Supabase no cliente, middleware e servidor;
