@@ -1,34 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_PATHS = [
-  "/login", "/register", "/api/auth/callback",
-  // PWA assets
-  "/manifest.webmanifest", "/icon", "/apple-icon",
-];
-
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
-
-  // Check for Supabase auth cookie (sb-<ref>-auth-token or sb-<ref>-auth-token.0 for chunked)
-  const hasAuthCookie = request.cookies
-    .getAll()
-    .some((c) => c.name.startsWith("sb-") && c.name.includes("-auth-token"));
-
-  if (!hasAuthCookie && !isPublic) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
-  }
-
-  if (hasAuthCookie && (pathname === "/login" || pathname === "/register")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
-  }
-
-  return NextResponse.next();
+export async function middleware(request: NextRequest) {
+  return updateSession(request);
 }
 
 export const config = {
