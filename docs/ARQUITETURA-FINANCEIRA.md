@@ -6,6 +6,7 @@ Formalizar a arquitetura financeira oficial do FinApp antes de qualquer correcao
 
 ## Escopo de integracoes bancarias
 
+- A integracao bancaria com Pluggy foi descontinuada.
 - Integracoes bancarias e conectores de Open Finance estao fora do escopo ativo atual.
 - A arquitetura financeira deve permanecer valida independentemente da origem futura dos dados.
 - Pluggy nao faz parte das pendencias ativas desta arquitetura.
@@ -14,7 +15,7 @@ Formalizar a arquitetura financeira oficial do FinApp antes de qualquer correcao
 
 - O modulo de recorrencia foi descontinuado.
 - Lancamentos passam a ser exclusivamente manuais nas telas operacionais vigentes.
-- Futuras automacoes de lancamento nao fazem parte do escopo atual.
+- Futuras automacoes de lancamento e futuras integracoes bancarias nao fazem parte do escopo atual.
 
 ## Papel das telas
 

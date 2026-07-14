@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, ArrowLeftRight, Receipt, CreditCard, MoreHorizontal, X,
-  Target, Tag, BarChart3, Bot, Landmark, User,
+  Target, Tag, BarChart3, Bot, User,
 } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 
@@ -21,7 +21,6 @@ const moreItems = [
   { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
   { href: "/reports", label: "Relatórios", icon: BarChart3 },
   { href: "/ai", label: "IA Financeira", icon: Bot },
-  { href: "/connect-bank", label: "Conectar Banco", icon: Landmark },
   { href: "/profile", label: "Perfil", icon: User },
 ];
 

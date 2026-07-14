@@ -11,7 +11,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/credit-cards": "Cartões",
   "/ai": "IA Financeira",
   "/profile": "Perfil",
-  "/connect-bank": "Conectar Banco",
   "/settings/appearance": "Aparência",
   "/goals": "Metas",
 };

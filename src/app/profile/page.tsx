@@ -8,7 +8,7 @@ import type { Account, Profile } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Button from "@/components/Button";
 import Input from "@/components/Input";
-import { Landmark, LogOut, Palette } from "lucide-react";
+import { LogOut, Palette } from "lucide-react";
 import Link from "next/link";
 
 export default function ProfilePage() {
@@ -96,17 +96,11 @@ export default function ProfilePage() {
         {/* Contas bancárias */}
         <div className="glass-divider pb-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="label-upper">Contas Bancárias</h2>
-            <Link href="/connect-bank">
-              <Button variant="secondary" className="!py-2 !px-4 text-xs flex items-center gap-2">
-                <Landmark size={14} />
-                Conectar
-              </Button>
-            </Link>
+            <h2 className="label-upper">Contas</h2>
           </div>
 
           {accounts.length === 0 ? (
-            <p className="text-white/30 text-sm">Nenhuma conta conectada.</p>
+            <p className="text-white/30 text-sm">Nenhuma conta cadastrada.</p>
           ) : (
             <div className="space-y-2">
               {accounts.map((a) => (

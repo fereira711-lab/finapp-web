@@ -13,7 +13,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/ai": "IA Financeira",
   "/profile": "Perfil",
   "/reports": "Relatórios",
-  "/connect-bank": "Conectar Banco",
   "/goals": "Metas",
 };
 

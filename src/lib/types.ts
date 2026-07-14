@@ -6,7 +6,6 @@ export interface Profile {
 export interface Account {
   id: string;
   user_id: string;
-  pluggy_account_id: string | null;
   bank_name: string;
   account_type: string;
   name: string;
