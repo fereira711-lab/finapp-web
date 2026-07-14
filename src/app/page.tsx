@@ -1,21 +1,28 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  addLocalDays,
+  getLiquidBalance,
+  getOfficialBillTotals,
+  isSameLocalDay,
+  parseLocalDate,
+  startOfLocalDay,
+} from "@/lib/financialAgenda";
 import { getCategoryConfig } from "@/lib/categories";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 import type { Transaction, Bill } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
 import { DashboardSkeleton } from "@/components/Skeleton";
-import BalanceModal from "@/components/dashboard/BalanceModal";
 import QuickAddModal from "@/components/dashboard/QuickAddModal";
 import {
   Wallet, FileText, Calculator,
-  AlertTriangle, CreditCard, Target, X,
-  ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Trash2, Check,
+  AlertTriangle, CreditCard, Target,
+  ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Trash2,
 } from "lucide-react";
 import { updateWalletBalance } from "@/lib/wallet";
 import { materializeRecurringTemplates } from "@/lib/recurring";
@@ -41,22 +48,28 @@ type RecentTxRow = {
   installmentCurrent?: number;
 };
 
+type UpcomingAgendaSection = {
+  key: "today" | "tomorrow" | "next";
+  title: string;
+  items: Bill[];
+};
+
 /* ── Dashboard ───────────────────────────────────── */
 export default function DashboardPage() {
   const [balance, setBalance] = useState(0);
-  const [walletAccountId, setWalletAccountId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState(0);
   const [cardTotal, setCardTotal] = useState(0);
   const [cardCategoryData, setCardCategoryData] = useState<CategoryData[]>([]);
   const [pendingBillsTotal, setPendingBillsTotal] = useState(0);
-  const [monthExpenses, setMonthExpenses] = useState<Transaction[]>([]);
+  const [receivableBillsTotal, setReceivableBillsTotal] = useState(0);
+  const [projectedBalance, setProjectedBalance] = useState(0);
   const [pendingBills, setPendingBills] = useState<Bill[]>([]);
-  const [pendingCardItems, setPendingCardItems] = useState<Array<{ name: string; amount: number; dueDay: number }>>([]);
+  const [receivableBills, setReceivableBills] = useState<Bill[]>([]);
+  const [upcomingBills, setUpcomingBills] = useState<Bill[]>([]);
   const [generalCategoryData, setGeneralCategoryData] = useState<CategoryData[]>([]);
   const [recentTx, setRecentTx] = useState<RecentTxRow[]>([]);
   const [goalProgress, setGoalProgress] = useState<GoalProgress[]>([]);
   const [loading, setLoading] = useState(true);
-  const [receiveDates, setReceiveDates] = useState<Array<{ date: string; amount: number }>>([]);
   const alerts = useBillAlerts();
 
   // Receitas/Despesas + variacao vs mes anterior
@@ -68,9 +81,6 @@ export default function DashboardPage() {
   // Insights e projecao
   const [insights, setInsights] = useState<string[]>([]);
   const [projection, setProjection] = useState<number | null>(null);
-
-  const [showBalanceModal, setShowBalanceModal] = useState(false);
-  const [showPendingModal, setShowPendingModal] = useState(false);
 
   // Quick Add (FAB)
   const [cardsForQuickAdd, setCardsForQuickAdd] = useState<Array<{
@@ -89,10 +99,32 @@ export default function DashboardPage() {
     setTimeout(() => setDelToast(null), 3000);
   }
 
-  // Valor Final = Saldo Atual (com recebimentos) - Contas a Pagar Pendentes
-  const totalToReceive = receiveDates.reduce((s, d) => s + d.amount, 0);
-  const balanceWithReceive = balance + totalToReceive;
-  const valorFinal = balanceWithReceive - pendingBillsTotal;
+  const upcomingAgendaSections = useMemo<UpcomingAgendaSection[]>(() => {
+    const today = startOfLocalDay(new Date());
+    const tomorrow = startOfLocalDay(addLocalDays(today, 1));
+    const nextSevenDays = startOfLocalDay(addLocalDays(today, 7));
+
+    return [
+      {
+        key: "today",
+        title: "Hoje",
+        items: upcomingBills.filter((bill) => isSameLocalDay(parseLocalDate(bill.due_date), today)),
+      },
+      {
+        key: "tomorrow",
+        title: "Amanhã",
+        items: upcomingBills.filter((bill) => isSameLocalDay(parseLocalDate(bill.due_date), tomorrow)),
+      },
+      {
+        key: "next",
+        title: "Próximos 7 dias",
+        items: upcomingBills.filter((bill) => {
+          const dueDate = startOfLocalDay(parseLocalDate(bill.due_date));
+          return dueDate.getTime() > tomorrow.getTime() && dueDate.getTime() <= nextSevenDays.getTime();
+        }),
+      },
+    ];
+  }, [upcomingBills]);
 
   async function loadDashboard() {
     try {
@@ -118,11 +150,15 @@ export default function DashboardPage() {
     const prevEndDay = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
     const prevEndStr = `${now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()}-${String(now.getMonth() === 0 ? 12 : now.getMonth()).padStart(2, "0")}-${String(prevEndDay).padStart(2, "0")}`;
 
-    const [accountsRes, monthTxRes, billsRes, recentTxRes, recentCardTxRes, cardTxRes, goalsRes, cardTxCatRes, pendingBillsRes, creditCardsRes, prevTxRes, prevCardTxRes, profileRes] = await Promise.all([
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const nextSeven = addLocalDays(startOfLocalDay(new Date()), 7);
+    const nextSevenStr = `${nextSeven.getFullYear()}-${String(nextSeven.getMonth() + 1).padStart(2, "0")}-${String(nextSeven.getDate()).padStart(2, "0")}`;
+
+    const [accountsRes, monthTxRes, billsRes, recentTxRes, recentCardTxRes, cardTxRes, goalsRes, cardTxCatRes, creditCardsRes, prevTxRes, prevCardTxRes, upcomingBillsRes] = await Promise.all([
       supabase.from("accounts").select("id, balance, name").eq("user_id", user.id),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
-      supabase.from("bills").select("amount, type, status, notes").eq("user_id", user.id)
+      supabase.from("bills").select("*").eq("user_id", user.id)
         .gte("due_date", startStr).lte("due_date", endStr),
       // recentTxRes: ultimas transactions
       supabase.from("transactions").select("*")
@@ -137,32 +173,22 @@ export default function DashboardPage() {
       // cardTxCatRes: gastos do mes (orcamento de metas) → filtra por date (data da compra)
       supabase.from("card_transactions").select("amount, category, card_id")
         .eq("user_id", user.id).gte("date", startStr).lte("date", endStr),
-      supabase.from("bills").select("*")
-        .eq("user_id", user.id).eq("type", "payable").neq("status", "paid")
-        .gte("due_date", startStr).lte("due_date", endStr)
-        .order("due_date", { ascending: true }),
       supabase.from("credit_cards").select("id, name, color, status, credit_limit, closing_day, due_day").eq("user_id", user.id),
       // prev month para variacao
       supabase.from("transactions").select("amount, type, category")
         .eq("user_id", user.id).gte("date", prevStartStr).lte("date", prevEndStr),
       supabase.from("card_transactions").select("amount, category")
         .eq("user_id", user.id).gte("date", prevStartStr).lte("date", prevEndStr),
-      supabase.from("profiles").select("receive_dates").eq("id", user.id).maybeSingle(),
+      supabase.from("bills").select("*")
+        .eq("user_id", user.id).neq("status", "paid")
+        .gte("due_date", todayStr).lte("due_date", nextSevenStr)
+        .order("due_date", { ascending: true }),
     ]);
-
-    const rawReceive = (profileRes.data?.receive_dates ?? []) as Array<{ date: string; amount: number }>;
-    setReceiveDates(Array.isArray(rawReceive) ? rawReceive : []);
 
     // Saldo — busca conta "Carteira" ou usa soma de todas
     const accounts = accountsRes.data || [];
-    const wallet = accounts.find((a) => a.name?.toLowerCase() === "carteira");
-    if (wallet) {
-      setBalance(wallet.balance);
-      setWalletAccountId(wallet.id);
-    } else {
-      setBalance(accounts.reduce((s, a) => s + a.balance, 0));
-      setWalletAccountId(null);
-    }
+    const currentBalance = getLiquidBalance(accounts);
+    setBalance(currentBalance);
 
     const monthTx = (monthTxRes.data || []) as Transaction[];
 
@@ -170,7 +196,6 @@ export default function DashboardPage() {
     const expTx = monthTx.filter((t) => t.type === "expense" || t.amount < 0);
     const totalExpenses = expTx.reduce((s, t) => s + Math.abs(t.amount), 0);
     setExpenses(totalExpenses);
-    setMonthExpenses(expTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
 
     // Cartões e transações
     const creditCards = (creditCardsRes.data || []) as Array<{ id: string; name: string; color: string; status: string; closing_day: number; due_day: number }>;
@@ -186,47 +211,16 @@ export default function DashboardPage() {
       .reduce((s, t) => s + t.amount, 0);
     setCardTotal(cardTxTotal);
 
-    // Contas a pagar pendentes (apenas payable e status !== paid)
-    const allBills = (billsRes.data || []);
-    // Exclui bills geradas automaticamente pelo cartao (notes "card:..."), pois esse valor
-    // ja entra via card_transactions agrupadas (cartaoPayable). Evita contagem duplicada.
-    const payableBills = allBills.filter(
-      (b) => b.type === "payable" && b.status !== "paid" && !(b.notes && b.notes.startsWith("card:"))
-    );
+    const allBills = (billsRes.data || []) as Bill[];
+    const officialTotals = getOfficialBillTotals(allBills, currentBalance);
+    setPendingBillsTotal(officialTotals.totalPayable);
+    setReceivableBillsTotal(officialTotals.totalReceivable);
+    setProjectedBalance(officialTotals.saldoPrevisto);
+    setPendingBills(allBills.filter((bill) => bill.type === "payable" && bill.status !== "paid"));
+    setReceivableBills(allBills.filter((bill) => bill.type === "receivable" && bill.status !== "paid"));
+    setUpcomingBills((upcomingBillsRes.data || []) as Bill[]);
 
     // Cartões a pagar (apenas os com status "pending" ou "overdue")
-    const unpaidCards = creditCards.filter((c) => c.status === "pending" || c.status === "overdue");
-    const unpaidCardIds2 = unpaidCards.map((c) => c.id);
-
-    // Agrupar transações por cartão para exibir no modal
-    const cardAmounts: Record<string, number> = {};
-    cardTxData.forEach((t) => {
-      if (unpaidCardIds2.includes(t.card_id)) {
-        cardAmounts[t.card_id] = (cardAmounts[t.card_id] || 0) + t.amount;
-      }
-    });
-
-    // Buscar nomes dos cartões
-    const { data: cardNamesData } = await supabase
-      .from("credit_cards")
-      .select("id, name, due_day")
-      .in("id", unpaidCardIds2);
-
-    const cardItems = (cardNamesData || []).map((c: { id: string; name: string; due_day: number }) => ({
-      name: c.name,
-      amount: cardAmounts[c.id] || 0,
-      dueDay: c.due_day,
-    })).filter((c) => c.amount > 0);
-
-    const cartaoPayable = Object.values(cardAmounts).reduce((s, v) => s + v, 0);
-
-    const totalPending = payableBills.reduce((s, b) => s + b.amount, 0) + cartaoPayable;
-    setPendingBillsTotal(totalPending);
-    setPendingBills(((pendingBillsRes.data || []) as Bill[]).filter(
-      (b) => b.type === "payable" && b.status !== "paid" && !(b.notes && b.notes.startsWith("card:"))
-    ));
-    setPendingCardItems(cardItems);
-
     // Gráfico APENAS cartão (apenas cartões não pagos)
     const cardCatMap: Record<string, number> = {};
     (cardTxCatRes.data || []).forEach((t: { amount: number; category: string; card_id: string }) => {
@@ -412,39 +406,6 @@ export default function DashboardPage() {
     };
   }, []);
 
-  // Debounce do save de receiveDates pro Supabase
-  const receiveDatesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  async function handleSaveBalance(newBalance: number) {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    if (walletAccountId) {
-      await supabase.from("accounts").update({ balance: newBalance }).eq("id", walletAccountId);
-    } else {
-      const { data } = await supabase.from("accounts").insert({
-        user_id: user.id, name: "Carteira", bank_name: "Manual",
-        account_type: "checking", balance: newBalance,
-      }).select("id").single();
-      if (data) setWalletAccountId(data.id);
-    }
-
-    setBalance(newBalance);
-    setShowBalanceModal(false);
-  }
-
-  function handleReceiveDatesChange(dates: Array<{ date: string; amount: number }>) {
-    setReceiveDates(dates);
-    if (receiveDatesSaveTimer.current) clearTimeout(receiveDatesSaveTimer.current);
-    receiveDatesSaveTimer.current = setTimeout(async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      await supabase.from("profiles").update({ receive_dates: dates }).eq("id", user.id);
-    }, 400);
-  }
-
   const tooltipStyle = {
     background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)",
     border: "1px solid rgba(255,255,255,0.15)", borderRadius: "12px", color: "#fff",
@@ -514,125 +475,92 @@ export default function DashboardPage() {
         <DashboardSkeleton />
       ) : (
         <div className="space-y-5">
-          {/* ── 3 Summary Cards ── */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Card title="Saldo Atual" value={formatCurrency(balanceWithReceive)}
-              subtitle={totalToReceive > 0 ? `+${formatCurrency(totalToReceive)} a receber` : "Toque para editar"}
-              icon={<Wallet size={16} />} color="text-white"
-              onClick={() => setShowBalanceModal(true)} />
-            <Card title="Contas a Pagar" value={formatCurrency(pendingBillsTotal)}
-              subtitle={`${pendingBills.length} contas pendentes`}
-              icon={<FileText size={16} />} color="text-yellow-400"
-              onClick={() => setShowPendingModal(true)} />
-            <Card title="Valor Final" value={formatCurrency(valorFinal)}
-              subtitle="Saldo − Contas a Pagar"
+          {/* ── Summary Cards ── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card
+              title="Saldo Atual"
+              value={formatCurrency(balance)}
+              subtitle="Saldo liquidado"
+              icon={<Wallet size={16} />}
+              color={balance >= 0 ? "text-green-400" : "text-red-400"}
+            />
+            <Card
+              title="A Receber"
+              value={formatCurrency(receivableBillsTotal)}
+              subtitle={`${receivableBills.length} compromisso(s)`}
+              icon={<ArrowUpRight size={16} />}
+              color="text-green-400"
+            />
+            <Card
+              title="A Pagar"
+              value={formatCurrency(pendingBillsTotal)}
+              subtitle={`${pendingBills.length} compromisso(s)`}
+              icon={<FileText size={16} />}
+              color="text-yellow-400"
+            />
+            <Card
+              title="Saldo Previsto"
+              value={formatCurrency(projectedBalance)}
+              subtitle="Saldo atual + a receber - a pagar"
               icon={<Calculator size={16} />}
-              color={valorFinal >= 0 ? "text-green-400" : "text-red-400"} />
+              color={projectedBalance >= 0 ? "text-green-400" : "text-red-400"}
+            />
           </div>
 
-          {/* ── Esta Semana ── */}
-          {(() => {
-            const today = new Date(); today.setHours(0, 0, 0, 0);
-            const in6 = new Date(today); in6.setDate(today.getDate() + 6);
-            const now = new Date();
+          {/* ── Agenda da Semana ── */}
+          <div className="glass-card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-sm font-semibold">Agenda da Semana</h2>
+                <p className="text-[10px] text-white/30 mt-0.5">Compromissos próximos da Agenda Financeira.</p>
+              </div>
+              <Link href="/bills" className="text-[10px] text-[#6366F1] hover:underline">
+                Ver Agenda Completa
+              </Link>
+            </div>
 
-            type WeekItem = {
-              key: string;
-              name: string;
-              dueDate: Date;
-              amount: number;
-              isCard: boolean;
-            };
-
-            const items: WeekItem[] = [];
-
-            for (const b of pendingBills) {
-              const d = new Date(b.due_date + "T12:00:00"); d.setHours(0, 0, 0, 0);
-              if (d <= in6) {
-                items.push({ key: `b-${b.id}`, name: b.description, dueDate: d, amount: b.amount, isCard: false });
-              }
-            }
-
-            for (let i = 0; i < pendingCardItems.length; i++) {
-              const c = pendingCardItems[i];
-              const d = new Date(now.getFullYear(), now.getMonth(), c.dueDay);
-              d.setHours(0, 0, 0, 0);
-              if (d <= in6) {
-                items.push({ key: `c-${i}-${c.name}`, name: c.name, dueDate: d, amount: c.amount, isCard: true });
-              }
-            }
-
-            items.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
-
-            const fmt = (d: Date) =>
-              `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-            const weekLabel = `${fmt(today)} - ${fmt(in6)}`;
-            const total = items.reduce((s, it) => s + it.amount, 0);
-
-            return (
-              <div className="glass-card p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h2 className="text-sm font-semibold">Esta Semana</h2>
-                    <p className="text-[10px] text-white/30 mt-0.5">{weekLabel}</p>
+            <div className="space-y-4">
+              {upcomingAgendaSections.map((section) => (
+                <div key={section.key}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-white/45">{section.title}</h3>
+                    {section.items.length > 0 && (
+                      <span className="text-[10px] text-white/30">{section.items.length} item(ns)</span>
+                    )}
                   </div>
-                  <FileText size={16} className="text-yellow-400" />
-                </div>
-
-                {items.length === 0 ? (
-                  <p className="text-xs text-green-400 flex items-center gap-1.5 py-1">
-                    <Check size={14} /> Nenhuma conta vencendo esta semana
-                  </p>
-                ) : (
-                  <div className="space-y-2.5 mb-3">
-                    {items.map((item) => {
-                      const diff = Math.round((item.dueDate.getTime() - today.getTime()) / 86400000);
-                      let badge: React.ReactNode = null;
-                      if (diff < 0) {
-                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-900/50 text-red-400">Atrasada</span>;
-                      } else if (diff === 0) {
-                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-red-500/20 text-red-400">Hoje</span>;
-                      } else if (diff === 1) {
-                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-orange-500/20 text-orange-400">Amanhã</span>;
-                      } else if (diff <= 3) {
-                        badge = <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-yellow-500/20 text-yellow-400">{diff} dias</span>;
-                      }
-
-                      return (
-                        <div key={item.key} className="flex items-center justify-between">
-                          <div className="min-w-0 flex-1 flex items-center gap-2">
-                            {item.isCard && <CreditCard size={11} className="text-[#6366F1] flex-shrink-0" />}
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="text-xs font-medium truncate">{item.name}</p>
-                                {badge}
-                              </div>
-                              <p className="text-[10px] text-white/30">{fmt(item.dueDate)}</p>
+                  {section.items.length === 0 ? (
+                    <p className="text-xs text-white/25">Nenhum compromisso.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {section.items.map((bill) => (
+                        <div key={bill.id} className="flex items-center justify-between py-2 glass-divider last:border-0">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {bill.notes?.startsWith("card:") && <CreditCard size={11} className="text-[#6366F1] flex-shrink-0" />}
+                              <p className="text-xs font-medium truncate">{bill.description}</p>
+                              <span className={`px-1.5 py-0.5 rounded-md text-[10px] uppercase tracking-wider ${
+                                bill.type === "receivable"
+                                  ? "bg-green-500/10 text-green-400"
+                                  : "bg-yellow-500/10 text-yellow-400"
+                              }`}>
+                                {bill.type === "receivable" ? "A receber" : "A pagar"}
+                              </span>
                             </div>
+                            <p className="text-[10px] text-white/30">{formatDate(bill.due_date)}</p>
                           </div>
-                          <span className={`text-xs font-bold flex-shrink-0 ml-2 ${diff < 0 ? "text-red-400" : "text-yellow-400"}`}>
-                            {formatCurrency(item.amount)}
+                          <span className={`text-xs font-bold flex-shrink-0 ml-3 ${
+                            bill.type === "receivable" ? "text-green-400" : "text-yellow-400"
+                          }`}>
+                            {bill.type === "receivable" ? "+" : "-"}{formatCurrency(bill.amount)}
                           </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {items.length > 0 && (
-                  <div className="flex items-center justify-between py-2 border-t border-white/10 mb-3">
-                    <span className="text-[11px] text-white/40">Total da semana</span>
-                    <span className="text-xs font-bold text-yellow-400">{formatCurrency(total)}</span>
-                  </div>
-                )}
-
-                <Link href="/bills" onClick={() => setShowPendingModal(false)}
-                  className="block text-center glass-btn py-2 text-xs">
-                  Ver todas as contas
-                </Link>
-              </div>
-            );
-          })()}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* ── Receitas + Despesas com variacao ── */}
           <div className="grid grid-cols-2 gap-3">
@@ -887,8 +815,8 @@ export default function DashboardPage() {
       <button
         onClick={() => setShowQuickAdd(true)}
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 rounded-full bg-[#6366F1] hover:bg-[#4F46E5] text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-        title="Novo gasto"
-        aria-label="Novo gasto"
+        title="Novo lançamento"
+        aria-label="Novo lançamento"
       >
         <Plus size={26} />
       </button>
@@ -964,87 +892,6 @@ export default function DashboardPage() {
         onAdded={loadDashboard}
         cards={cardsForQuickAdd}
       />
-
-      {/* ── Modal: Saldo Atual ── */}
-      <BalanceModal
-        open={showBalanceModal}
-        currentBalance={balance}
-        onClose={() => setShowBalanceModal(false)}
-        onSave={handleSaveBalance}
-        receiveDates={receiveDates}
-        onReceiveDatesChange={handleReceiveDatesChange}
-      />
-
-      {/* ── Modal: Contas Pendentes ── */}
-      {showPendingModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center"
-          onClick={() => setShowPendingModal(false)}>
-          <div className="glass w-full max-w-md max-h-[80vh] flex flex-col md:mx-4 md:rounded-2xl rounded-t-2xl rounded-b-none md:rounded-b-2xl"
-            onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <h2 className="text-sm font-bold">Contas a Pagar</h2>
-              <button onClick={() => setShowPendingModal(false)} className="text-white/40 hover:text-white">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {pendingBills.length === 0 && pendingCardItems.length === 0 ? (
-                <p className="text-white/30 text-sm text-center py-6">Nenhuma conta pendente este mes</p>
-              ) : (
-                <>
-                  {/* Cartões pendentes */}
-                  {pendingCardItems.map((c, i) => (
-                    <div key={`card-${i}`} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <CreditCard size={12} className="text-[#6366F1] flex-shrink-0" />
-                          <p className="text-xs font-medium truncate">{c.name}</p>
-                        </div>
-                        <p className="text-[10px] text-white/30">Fatura · Vence dia {c.dueDay}</p>
-                      </div>
-                      <span className="text-xs font-bold flex-shrink-0 ml-2 text-[#6366F1]">
-                        {formatCurrency(c.amount)}
-                      </span>
-                    </div>
-                  ))}
-                  {/* Contas normais */}
-                  {pendingBills.map((b) => {
-                    const dueDate = new Date(b.due_date + "T12:00:00");
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    const isOverdue = dueDate < today;
-                    const isToday = dueDate.toDateString() === today.toDateString();
-                    return (
-                      <div key={b.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium truncate">{b.description}</p>
-                          <p className={`text-[10px] ${isOverdue ? "text-red-400" : "text-white/30"}`}>
-                            {isOverdue ? "Vencida em " : isToday ? "Vence hoje" : "Vence em "}{!isToday && formatDate(b.due_date)}
-                            {isOverdue && <span> · Atrasada</span>}
-                          </p>
-                        </div>
-                        <span className={`text-xs font-bold flex-shrink-0 ml-2 ${isOverdue ? "text-red-400" : "text-yellow-400"}`}>
-                          {formatCurrency(b.amount)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-            <div className="p-4 border-t border-white/10 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-white/50">Total pendente</span>
-                <span className="font-bold text-yellow-400">{formatCurrency(pendingBillsTotal)}</span>
-              </div>
-              <Link href="/bills" onClick={() => setShowPendingModal(false)}
-                className="block text-center glass-btn py-2 text-xs">
-                Ver todas as contas
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }

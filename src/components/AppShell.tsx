@@ -8,7 +8,7 @@ import MobileHeader from "./MobileHeader";
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
   "/transactions": "Transações",
-  "/bills": "Contas",
+  "/bills": "Agenda Financeira",
   "/credit-cards": "Cartões",
   "/ai": "IA Financeira",
   "/profile": "Perfil",

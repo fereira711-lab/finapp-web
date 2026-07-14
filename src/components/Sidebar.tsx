@@ -7,10 +7,10 @@ import { useBillAlerts } from "@/lib/useBillAlerts";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
-  { href: "/bills", label: "Contas a Pagar", icon: Receipt },
+  { href: "/bills", label: "Agenda Financeira", icon: Receipt },
   { href: "/credit-cards", label: "Cartões", icon: CreditCard },
   { href: "/reports", label: "Relatórios", icon: BarChart3 },
-  { href: "/transactions", label: "Gastos", icon: ArrowLeftRight },
+  { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
   { href: "/recurring", label: "Recorrentes", icon: RefreshCw },
   { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
   { href: "/goals", label: "Metas", icon: Target },

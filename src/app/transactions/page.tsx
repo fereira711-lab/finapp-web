@@ -410,7 +410,7 @@ export default function TransactionsPage() {
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <h2 className="label-upper">Gastos</h2>
+        <h2 className="label-upper">Transações</h2>
         <button
           onClick={openForm}
           className="flex items-center gap-1.5 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs uppercase tracking-wider px-3 py-2.5 rounded-xl transition-colors"
@@ -463,7 +463,7 @@ export default function TransactionsPage() {
           <p className="text-lg font-bold text-green-400">{formatCurrency(totalIncome)}</p>
         </div>
         <div className="glass-card p-3">
-          <p className="label-upper mb-1">Gastos</p>
+          <p className="label-upper mb-1">Despesas</p>
           <p className="text-lg font-bold text-red-400">{formatCurrency(totalExpenses)}</p>
         </div>
       </div>
@@ -472,7 +472,7 @@ export default function TransactionsPage() {
       {loading ? (
         <ListSkeleton rows={6} />
       ) : rows.length === 0 ? (
-        <p className="text-white/30">Nenhum gasto encontrado.</p>
+        <p className="text-white/30">Nenhuma transação encontrada.</p>
       ) : (
         <div className="space-y-2">
           {rows.map((r) => {

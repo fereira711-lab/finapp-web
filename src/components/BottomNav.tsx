@@ -11,9 +11,9 @@ import { useBillAlerts } from "@/lib/useBillAlerts";
 
 const primaryItems = [
   { href: "/", label: "Dashboard", icon: Home },
-  { href: "/bills", label: "Contas", icon: Receipt },
+  { href: "/bills", label: "Agenda", icon: Receipt },
   { href: "/credit-cards", label: "Cartões", icon: CreditCard },
-  { href: "/transactions", label: "Gastos", icon: ArrowLeftRight },
+  { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
 ];
 
 const moreItems = [

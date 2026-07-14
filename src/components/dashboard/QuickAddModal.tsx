@@ -135,11 +135,14 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
         <form onSubmit={handleSubmit} className="relative glass p-5 w-full max-w-md space-y-4 max-h-[85vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-bold">{type === "income" ? "Nova receita" : "Novo gasto"}</h2>
+            <h2 className="text-lg font-bold">Lançamento Rápido</h2>
             <button type="button" onClick={onClose} className="text-white/45 hover:text-white p-1">
               <X size={20} />
             </button>
           </div>
+          <p className="text-xs text-white/45">
+            Use aqui apenas movimentações realizadas. Compromissos futuros ficam na Agenda Financeira.
+          </p>
 
           <div>
             <label className="label-upper block mb-2">Tipo</label>
@@ -147,11 +150,11 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
               <button type="button" onClick={() => setType("expense")}
                 className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   type === "expense" ? "bg-red-500/20 text-red-400 border border-red-500/50" : "glass-btn text-white/60"
-                }`}>Despesa</button>
+                }`}>Gasto realizado</button>
               <button type="button" onClick={() => setType("income")}
                 className={`py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   type === "income" ? "bg-green-500/20 text-green-400 border border-green-500/50" : "glass-btn text-white/60"
-                }`}>Receita</button>
+                }`}>Receita realizada</button>
             </div>
           </div>
 
@@ -248,7 +251,7 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
 
           <button type="submit" disabled={saving}
             className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
-            {saving ? "Salvando..." : "Adicionar"}
+            {saving ? "Salvando..." : "Registrar movimentação"}
           </button>
         </form>
       </div>

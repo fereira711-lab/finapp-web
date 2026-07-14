@@ -3,6 +3,14 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  getLiquidBalance,
+  getMonthAgendaWeeks,
+  getOfficialBillTotals,
+  isDateWithinRange,
+  parseLocalDate,
+  startOfLocalDay,
+} from "@/lib/financialAgenda";
 import { updateWalletBalance } from "@/lib/wallet";
 import type { Bill, CardTransaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
@@ -142,10 +150,16 @@ interface WeekBucket {
   isCurrent: boolean;
 }
 
+type BillSettlementRow = Bill & {
+  account_id?: string | null;
+  category?: string | null;
+};
+
 export default function BillsPage() {
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
+  const [currentBalance, setCurrentBalance] = useState(0);
 
   const [bills, setBills] = useState<Bill[]>([]);
   const [filter, setFilter] = useState<StatusFilter>("all");
@@ -178,20 +192,35 @@ export default function BillsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const startOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-01`;
-    const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    const endOfMonth = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    const calendarWeeks = getMonthAgendaWeeks(selectedYear, selectedMonth);
+    const displayStart = calendarWeeks[0]?.start;
+    const displayEnd = calendarWeeks[calendarWeeks.length - 1]?.end;
+    const startOfRange = displayStart
+      ? `${displayStart.getFullYear()}-${String(displayStart.getMonth() + 1).padStart(2, "0")}-${String(displayStart.getDate()).padStart(2, "0")}`
+      : `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-01`;
+    const endOfRange = displayEnd
+      ? `${displayEnd.getFullYear()}-${String(displayEnd.getMonth() + 1).padStart(2, "0")}-${String(displayEnd.getDate()).padStart(2, "0")}`
+      : `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-31`;
 
-    // Buscar bills
-    const { data } = await supabase
-      .from("bills")
-      .select("*")
-      .eq("user_id", user.id)
-      .gte("due_date", startOfMonth)
-      .lte("due_date", endOfMonth)
-      .order("due_date", { ascending: true });
+    const [billsRes, cardsRes, accountsRes] = await Promise.all([
+      supabase
+        .from("bills")
+        .select("*")
+        .eq("user_id", user.id)
+        .gte("due_date", startOfRange)
+        .lte("due_date", endOfRange)
+        .order("due_date", { ascending: true }),
+      supabase
+        .from("credit_cards")
+        .select("id, status")
+        .eq("user_id", user.id),
+      supabase
+        .from("accounts")
+        .select("id, name, balance")
+        .eq("user_id", user.id),
+    ]);
 
-    let result = data || [];
+    let result = billsRes.data || [];
 
     const today = new Date().toISOString().split("T")[0];
     const toUpdate = result.filter((b) => b.status === "pending" && b.due_date < today);
@@ -202,11 +231,7 @@ export default function BillsPage() {
       );
     }
 
-    // Buscar cartões de crédito
-    const { data: cardsData } = await supabase
-      .from("credit_cards")
-      .select("id, status")
-      .eq("user_id", user.id);
+    const cardsData = cardsRes.data;
 
     const cardsMap: Record<string, { status: "pending" | "paid" | "overdue" }> = {};
     (cardsData || []).forEach((card: { id: string; status: "pending" | "paid" | "overdue" }) => {
@@ -215,10 +240,19 @@ export default function BillsPage() {
     setCreditCards(cardsMap);
 
     setBills(result);
+    setCurrentBalance(getLiquidBalance(accountsRes.data || []));
     setLoading(false);
   }, [selectedYear, selectedMonth]);
 
   useEffect(() => { setLoading(true); load(); }, [load]);
+
+  const monthBills = useMemo(
+    () => bills.filter((bill) => {
+      const dueDate = parseLocalDate(bill.due_date);
+      return dueDate.getFullYear() === selectedYear && dueDate.getMonth() === selectedMonth;
+    }),
+    [bills, selectedYear, selectedMonth],
+  );
 
   // Separate regular bills from card bills, then group card bills by cardId
   const { regularBills, cardGroups, allItems } = useMemo(() => {
@@ -287,14 +321,12 @@ export default function BillsPage() {
 
   // Divide o mês em semanas (1-7, 8-14, 15-21, 22-fim) e distribui as contas
   const weeks = useMemo<WeekBucket[]>(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-    const ranges: [number, number][] = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+    const today = startOfLocalDay(new Date());
 
-    const buckets: WeekBucket[] = ranges.map(([s, e], i) => ({
-      index: i + 1,
-      start: new Date(selectedYear, selectedMonth, s),
-      end: new Date(selectedYear, selectedMonth, e),
+    const buckets: WeekBucket[] = getMonthAgendaWeeks(selectedYear, selectedMonth).map((week) => ({
+      index: week.index,
+      start: week.start,
+      end: week.end,
       items: [],
       totalPayable: 0,
       hasUrgent: false,
@@ -304,10 +336,9 @@ export default function BillsPage() {
 
     for (const item of allItems) {
       const dueStr = item.type === "card" ? item.data.dueDate : item.data.due_date;
-      const d = new Date(dueStr + "T12:00:00");
-      if (d.getFullYear() !== selectedYear || d.getMonth() !== selectedMonth) continue;
-      const day = d.getDate();
-      const idx = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
+      const d = parseLocalDate(dueStr);
+      const idx = buckets.findIndex((bucket) => isDateWithinRange(d, bucket.start, bucket.end));
+      if (idx < 0) continue;
       const bucket = buckets[idx];
       bucket.items.push(item);
 
@@ -317,8 +348,7 @@ export default function BillsPage() {
       if (isPayable && status !== "paid") bucket.totalPayable += amount;
 
       if (status !== "paid") {
-        const dueMid = new Date(selectedYear, selectedMonth, day).getTime();
-        const diffDays = Math.round((dueMid - today.getTime()) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.round((startOfLocalDay(d).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         if (diffDays >= 0 && diffDays <= 2) bucket.hasUrgent = true;
       }
     }
@@ -334,10 +364,9 @@ export default function BillsPage() {
   useEffect(() => {
     const today = new Date();
     let def = 1;
-    if (today.getFullYear() === selectedYear && today.getMonth() === selectedMonth) {
-      const day = today.getDate();
-      def = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : 4;
-    }
+    const currentWeek = getMonthAgendaWeeks(selectedYear, selectedMonth)
+      .find((week) => isDateWithinRange(today, week.start, week.end));
+    if (currentWeek) def = currentWeek.index;
     setOpenWeeks(new Set([def]));
   }, [selectedYear, selectedMonth]);
 
@@ -357,15 +386,14 @@ export default function BillsPage() {
 
   // Totals — use regular bills + card group totals (avoids double counting)
   // BUG FIX #2: Excluir contas pagas do total "A PAGAR"
-  const totalPayable = regularBills.filter((b) => b.type === "payable" && b.status !== "paid").reduce((s, b) => s + b.amount, 0)
-    + cardGroups.filter((g) => g.status !== "paid").reduce((s, g) => s + g.totalAmount, 0);
-  const totalReceivable = regularBills.filter((b) => b.type === "receivable" && b.status !== "paid").reduce((s, b) => s + b.amount, 0);
-  const balance = totalReceivable - totalPayable;
+  const { totalPayable, totalReceivable, saldoPrevisto } = useMemo(
+    () => getOfficialBillTotals(monthBills, currentBalance),
+    [monthBills, currentBalance],
+  );
 
-  const allBillStatuses = [...regularBills.map((b) => b.status), ...cardGroups.map((g) => g.status)];
-  const paidCount = allBillStatuses.filter((s) => s === "paid").length;
-  const pendingCount = allBillStatuses.filter((s) => s === "pending").length;
-  const overdueCount = allBillStatuses.filter((s) => s === "overdue").length;
+  const paidCount = monthBills.filter((bill) => bill.status === "paid").length;
+  const pendingCount = monthBills.filter((bill) => bill.status === "pending").length;
+  const overdueCount = monthBills.filter((bill) => bill.status === "overdue").length;
 
   function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(null), 4000); }
 
@@ -390,6 +418,45 @@ export default function BillsPage() {
     setRecurrent(b.recurrent); setNotes(b.notes || ""); setShowForm(true);
   }
   function closeForm() { setShowForm(false); resetForm(); }
+
+  async function settleBill(
+    supabase: ReturnType<typeof createClient>,
+    userId: string,
+    bill: BillSettlementRow,
+    liquidationDate: string,
+  ): Promise<{ error?: string }> {
+    const amount = Math.abs(bill.amount);
+    const txType = bill.type === "payable" ? "expense" : "income";
+    const signedAmount = txType === "income" ? amount : -amount;
+    const { error: txError } = await supabase.from("transactions").insert({
+      user_id: userId,
+      account_id: bill.account_id ?? null,
+      description: bill.description,
+      amount: signedAmount,
+      category: bill.category || "outros",
+      date: liquidationDate,
+      type: txType,
+      status: "completed",
+    });
+
+    if (txError) {
+      return { error: txError.message };
+    }
+
+    const delta = txType === "income" ? amount : -amount;
+    await updateWalletBalance(supabase, userId, delta);
+
+    const { error: billError } = await supabase
+      .from("bills")
+      .update({ status: "paid" })
+      .eq("id", bill.id);
+
+    if (billError) {
+      return { error: billError.message };
+    }
+
+    return {};
+  }
 
   async function openCardDetail(group: CardBillGroup) {
     setCardDetailName(group.cardName);
@@ -416,12 +483,6 @@ export default function BillsPage() {
 
     setCardDetailTxs(txs || []);
     setCardDetailLoading(false);
-  }
-
-  // Efeito de uma bill no saldo (so se paga): payable=-amount, receivable=+amount, nao paga=0
-  function walletEffect(b: { status: string; type: string; amount: number }): number {
-    if (b.status !== "paid") return 0;
-    return b.type === "payable" ? -b.amount : b.amount;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -451,14 +512,7 @@ export default function BillsPage() {
         billData.status = "overdue";
       }
 
-      // Ajusta saldo pelo delta entre efeito antigo e novo
-      const oldBill = bills.find((b) => b.id === editingId);
-      const oldEffect = oldBill ? walletEffect(oldBill) : 0;
-      const newEffect = walletEffect({ status: billData.status, type: billData.type, amount: billData.amount });
       await supabase.from("bills").update(billData).eq("id", editingId);
-      if (newEffect !== oldEffect) {
-        await updateWalletBalance(supabase, user.id, newEffect - oldEffect);
-      }
     } else {
       const today = new Date().toISOString().split("T")[0];
       if (status === "pending" && dueDate < today) { billData.status = "overdue"; }
@@ -485,17 +539,7 @@ export default function BillsPage() {
     if (!editingId) return;
     setSaving(true);
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    // Se a bill estava paga, reverte o efeito no saldo
-    const oldBill = bills.find((b) => b.id === editingId);
-    const oldEffect = oldBill ? walletEffect(oldBill) : 0;
-
     await supabase.from("bills").delete().eq("id", editingId);
-
-    if (user && oldEffect !== 0) {
-      await updateWalletBalance(supabase, user.id, -oldEffect);
-    }
 
     closeForm(); setSaving(false); setLoading(true); load();
   }
@@ -504,20 +548,20 @@ export default function BillsPage() {
     setMarkingId(id);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setMarkingId(null); return; }
+    const bill = bills.find((b) => b.id === id) as BillSettlementRow | undefined;
+    if (!bill || bill.status === "paid") { setMarkingId(null); return; }
 
-    // Carrega a bill para saber type/amount/status (so ajusta saldo se estava nao-paga)
-    const bill = bills.find((b) => b.id === id);
-
-    await supabase.from("bills").update({ status: "paid" }).eq("id", id);
-
-    if (user && bill && bill.status !== "paid") {
-      // payable paga = saiu dinheiro (-); receivable recebida = entrou (+)
-      const delta = bill.type === "payable" ? -bill.amount : bill.amount;
-      await updateWalletBalance(supabase, user.id, delta);
+    const liquidationDate = new Date().toISOString().split("T")[0];
+    const { error } = await settleBill(supabase, user.id, bill, liquidationDate);
+    if (error) {
+      showToast("Erro ao liquidar conta: " + error);
+      setMarkingId(null);
+      return;
     }
 
     setLoading(true);
-    load();
+    await load();
     setMarkingId(null);
   }
 
@@ -525,23 +569,24 @@ export default function BillsPage() {
     setMarkingId(group.cardId);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const ids = group.bills.map((b) => b.id);
+    if (!user) { setMarkingId(null); return; }
 
-    await supabase.from("bills").update({ status: "paid" }).in("id", ids);
-    await supabase.from("credit_cards").update({ status: "paid" }).eq("id", group.cardId);
+    const liquidationDate = new Date().toISOString().split("T")[0];
+    const pendingBills = group.bills.filter((b) => b.status !== "paid") as BillSettlementRow[];
 
-    if (user) {
-      // Soma das bills que ainda nao estavam pagas
-      const totalDelta = group.bills
-        .filter((b) => b.status !== "paid")
-        .reduce((s, b) => s + (b.type === "payable" ? -b.amount : b.amount), 0);
-      if (totalDelta !== 0) {
-        await updateWalletBalance(supabase, user.id, totalDelta);
+    for (const bill of pendingBills) {
+      const { error } = await settleBill(supabase, user.id, bill, liquidationDate);
+      if (error) {
+        showToast("Erro ao liquidar fatura: " + error);
+        setMarkingId(null);
+        return;
       }
     }
 
+    await supabase.from("credit_cards").update({ status: "paid" }).eq("id", group.cardId);
+
     setLoading(true);
-    load();
+    await load();
     setMarkingId(null);
   }
 
@@ -560,7 +605,7 @@ export default function BillsPage() {
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <h2 className="label-upper">Gerenciar Contas</h2>
+        <h2 className="label-upper">Agenda Financeira</h2>
         <button onClick={openNew}
           className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-xs uppercase tracking-wider px-4 py-2.5 rounded-xl transition-colors">
           <Plus size={16} /> Nova
@@ -575,7 +620,11 @@ export default function BillsPage() {
       </div>
 
       {/* Resumo */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+        <div className="glass-card p-3">
+          <div className="flex items-center gap-1.5 mb-1"><Wallet size={12} className="text-white" /><p className="label-upper">Saldo Atual</p></div>
+          <p className={`text-lg font-bold ${currentBalance >= 0 ? "text-green-400" : "text-red-400"}`}>{formatCurrency(currentBalance)}</p>
+        </div>
         <div className="glass-card p-3">
           <div className="flex items-center gap-1.5 mb-1"><TrendingDown size={12} className="text-red-400" /><p className="label-upper">A Pagar</p></div>
           <p className="text-lg font-bold text-red-400">{formatCurrency(totalPayable)}</p>
@@ -586,7 +635,7 @@ export default function BillsPage() {
         </div>
         <div className="glass-card p-3">
           <div className="flex items-center gap-1.5 mb-1"><Wallet size={12} className="text-[#6366F1]" /><p className="label-upper">Saldo Previsto</p></div>
-          <p className={`text-lg font-bold ${balance >= 0 ? "text-green-400" : "text-red-400"}`}>{formatCurrency(balance)}</p>
+          <p className={`text-lg font-bold ${saldoPrevisto >= 0 ? "text-green-400" : "text-red-400"}`}>{formatCurrency(saldoPrevisto)}</p>
         </div>
       </div>
       <p className="text-[11px] text-white/30 mb-4 glass-divider pb-4">
