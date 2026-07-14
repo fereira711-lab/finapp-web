@@ -10,6 +10,12 @@ Formalizar a arquitetura financeira oficial do FinApp antes de qualquer correcao
 - A arquitetura financeira deve permanecer valida independentemente da origem futura dos dados.
 - Pluggy nao faz parte das pendencias ativas desta arquitetura.
 
+## Escopo de automacoes
+
+- O modulo de recorrencia foi descontinuado.
+- Lancamentos passam a ser exclusivamente manuais nas telas operacionais vigentes.
+- Futuras automacoes de lancamento nao fazem parte do escopo atual.
+
 ## Papel das telas
 
 - Dashboard = visao executiva do financeiro.
@@ -70,8 +76,9 @@ Formalizar a arquitetura financeira oficial do FinApp antes de qualquer correcao
 1. Usuario paga uma `Bill payable`.
 2. O sistema cria uma `Transaction` do tipo `expense`, com valor e data da liquidacao.
 3. O sistema atualiza `Account.balance` a partir dessa `Transaction`.
-4. A `Bill` e marcada como `paid`.
-5. Bills nao devem alterar saldo diretamente.
+4. So apos a atualizacao de saldo com sucesso a `Bill` e marcada como `paid`.
+5. Se a atualizacao de saldo falhar, a liquidacao nao e concluida e o erro deve ser exposto.
+6. Bills nao devem alterar saldo diretamente.
 
 Fluxo de recebimento:
 
@@ -89,11 +96,12 @@ Fluxo de recebimento:
 5. A fatura permanece como compromisso em `Bills` ate a quitacao.
 6. No pagamento da fatura, deve ser criada uma `Transaction` de despesa liquidada.
 7. So nessa liquidacao `Account.balance` deve ser alterado.
+8. Na decisao atual, o pagamento da fatura cria uma `Transaction` por `Bill` liquidada.
 
 Pendente de decisao:
 
-- Se o pagamento da fatura deve gerar uma `Transaction` agregada por fatura ou uma `Transaction` por item liquidado da fatura.
 - Se a `Bill` de cartao deve continuar item a item ou migrar para uma fatura consolidada por ciclo.
+- O vinculo entre `card_transactions` e `bills` continua fragil por `notes` e `description` e depende de correcao estrutural futura com alteracao de schema.
 
 ## 8. Fonte oficial de cada indicador do dashboard
 
@@ -132,6 +140,7 @@ Pendente de decisao:
 - Criar, editar, atrasar, antecipar, cancelar ou excluir `Bill` nao deve alterar saldo, exceto se houver reflexo na `Transaction` de liquidacao ja existente.
 - Criar `CardTransaction` nao deve alterar saldo.
 - Pagar fatura do cartao deve alterar saldo por meio de `Transaction`.
+- Falha ao atualizar saldo impede concluir a liquidacao da `Bill`.
 - Ajustes manuais de saldo fora de `Transaction` ficam pendentes de decisao, pois hoje existe atualizacao direta por RPC em `src/lib/wallet.ts`.
 
 ## 10. Invariantes financeiras
@@ -163,7 +172,12 @@ Pendente de decisao:
 - `src/app/credit-cards/page.tsx:252-263` localiza Bill por sufixo de descricao.
 - `src/app/credit-cards/page.tsx:269-280` renomeia Bills por texto.
 - `src/app/credit-cards/page.tsx:466-522` edita/exclui Bills por `notes` e `description`.
-- Isso e fragil e permanece pendente de decisao estrutural.
+- Isso e fragil e permanece como divida tecnica ate uma etapa futura com alteracao de schema.
+
+### Status mensal da fatura ainda depende de `credit_cards.status`
+- `src/app/page.tsx` e `src/app/bills/page.tsx` ainda usam `credit_cards.status` como apoio para cartao aberto e grupo de fatura.
+- Esse campo nao deve ser tratado como modelo definitivo do status mensal da fatura.
+- A correcao estrutural tambem fica para etapa futura com alteracao de schema.
 
 ### Dashboard mistura realizado e previsto
 - `src/app/page.tsx:122-149` consulta `accounts`, `transactions`, `bills` e `card_transactions` no mesmo carregamento.
@@ -171,11 +185,6 @@ Pendente de decisao:
 - `src/app/page.tsx:189-224` calcula contas a pagar com mistura de `bills` e cartao aberto.
 - `src/app/page.tsx:94-95` e `src/app/page.tsx:223-224` produzem projecao combinando saldo liquidado com previsto.
 - A projecao em si faz sentido, mas precisa ficar explicitamente separada dos indicadores de realizado.
-
-### Recorrencia mistura materializacao de compromisso e liquidacao
-- `src/lib/recurring.ts:46-73` cria `card_transactions` e `bills` para recorrencia no cartao.
-- `src/lib/recurring.ts:74-88` cria `transactions` e ajusta saldo para PIX/debito ou receita.
-- A arquitetura oficial aceita isso, mas a regra de recorrencia deve sempre distinguir compromisso futuro de liquidacao imediata.
 
 ## 12. Ordem de implementacao
 

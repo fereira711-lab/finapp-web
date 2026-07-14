@@ -4,7 +4,7 @@ Aplicacao web financeira pessoal baseada em Next.js, React, TypeScript e Supabas
 
 ## Objetivo
 
-Centralizar saldo, transacoes, contas, cartoes, metas, recorrencias, relatorios e assistencia por IA em uma interface unica.
+Centralizar saldo, transacoes, contas, cartoes, metas, relatorios e assistencia por IA em uma interface unica.
 
 ## Stack
 
@@ -32,7 +32,6 @@ Centralizar saldo, transacoes, contas, cartoes, metas, recorrencias, relatorios 
 - contas a pagar
 - cartoes de credito
 - metas
-- recorrencias
 - relatorios
 - regras de categoria
 - integracao bancaria
@@ -80,6 +79,12 @@ Camada Supabase atual:
 - `src/lib/supabase/server.ts`: cliente server-side com cookies de sessao e chave anonima publica;
 - `src/lib/supabase/middleware.ts`: atualiza sessao e protege rotas privadas;
 - `SUPABASE_SERVICE_ROLE_KEY` fica restrita ao webhook Pluggy.
+
+## Modulos descontinuados
+
+- o modulo de recorrencia foi removido do projeto;
+- os lancamentos passam a ser exclusivamente manuais;
+- futuras automacoes de lancamento nao fazem parte do escopo atual.
 
 ## Observacoes
 

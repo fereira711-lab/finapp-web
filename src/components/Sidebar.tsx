@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ArrowLeftRight, Receipt, CreditCard, Bot, User, BarChart3, Landmark, Target, RefreshCw, Tag } from "lucide-react";
+import { Home, ArrowLeftRight, Receipt, CreditCard, Bot, User, BarChart3, Landmark, Target, Tag } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 
 const navItems = [
@@ -11,7 +11,6 @@ const navItems = [
   { href: "/credit-cards", label: "Cartões", icon: CreditCard },
   { href: "/reports", label: "Relatórios", icon: BarChart3 },
   { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
-  { href: "/recurring", label: "Recorrentes", icon: RefreshCw },
   { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/ai", label: "IA Financeira", icon: Bot },

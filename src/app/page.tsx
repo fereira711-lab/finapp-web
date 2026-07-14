@@ -25,7 +25,6 @@ import {
   ArrowUpRight, ArrowDownRight, Lightbulb, Plus, Trash2,
 } from "lucide-react";
 import { updateWalletBalance } from "@/lib/wallet";
-import { materializeRecurringTemplates } from "@/lib/recurring";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
 } from "recharts";
@@ -99,6 +98,15 @@ export default function DashboardPage() {
     setTimeout(() => setDelToast(null), 3000);
   }
 
+  function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "object" && error && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string") return message;
+    }
+    return "Erro inesperado";
+  }
+
   const upcomingAgendaSections = useMemo<UpcomingAgendaSection[]>(() => {
     const today = startOfLocalDay(new Date());
     const tomorrow = startOfLocalDay(addLocalDays(today, 1));
@@ -134,9 +142,6 @@ export default function DashboardPage() {
       setLoading(false);
       return;
     }
-
-    // Materializa templates recorrentes do mes (se houver pendentes)
-    try { await materializeRecurringTemplates(supabase, user.id); } catch (e) { console.warn("recurring materialize failed", e); }
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -423,7 +428,16 @@ export default function DashboardPage() {
       const { error } = await supabase.from("transactions").delete().eq("id", realId);
       if (error) { setDeleting(false); showDelToast("Erro: " + error.message); return; }
       const delta = deleteRow.type === "income" ? -deleteRow.amount : deleteRow.amount;
-      await updateWalletBalance(supabase, user.id, delta);
+      try {
+        await updateWalletBalance(supabase, user.id, delta);
+      } catch (error) {
+        setDeleteRow(null);
+        setDeleteAllInst(false);
+        setDeleting(false);
+        await loadDashboard();
+        showDelToast("Transação excluída, mas o saldo não foi atualizado: " + getErrorMessage(error));
+        return;
+      }
       showDelToast("Excluido");
     } else {
       const realId = deleteRow.id.replace(/^card-/, "");

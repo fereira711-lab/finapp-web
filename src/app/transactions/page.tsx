@@ -93,6 +93,15 @@ export default function TransactionsPage() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "object" && error && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string") return message;
+    }
+    return "Erro inesperado";
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
@@ -308,7 +317,16 @@ export default function TransactionsPage() {
         // Reverte efeito original e aplica novo
         const oldDelta = editingOriginal.type === "income" ? editingOriginal.amount : -editingOriginal.amount;
         const newDelta = fType === "income" ? totalAmount : -totalAmount;
-        await updateWalletBalance(supabase, user.id, newDelta - oldDelta);
+        try {
+          await updateWalletBalance(supabase, user.id, newDelta - oldDelta);
+        } catch (error) {
+          closeForm();
+          setSaving(false);
+          await load();
+          window.dispatchEvent(new Event("finapp:data-changed"));
+          showToast("Transação atualizada, mas o saldo não foi atualizado: " + getErrorMessage(error));
+          return;
+        }
         showToast("Atualizado");
       } else {
         const { error } = await supabase.from("transactions").insert({
@@ -322,7 +340,16 @@ export default function TransactionsPage() {
         });
         if (error) { setSaving(false); showToast("Erro ao salvar: " + error.message); return; }
         const delta = fType === "income" ? totalAmount : -totalAmount;
-        await updateWalletBalance(supabase, user.id, delta);
+        try {
+          await updateWalletBalance(supabase, user.id, delta);
+        } catch (error) {
+          closeForm();
+          setSaving(false);
+          await load();
+          window.dispatchEvent(new Event("finapp:data-changed"));
+          showToast("Transação salva, mas o saldo não foi atualizado: " + getErrorMessage(error));
+          return;
+        }
         showToast(fType === "income" ? "Receita registrada" : "Gasto registrado");
       }
     }
@@ -346,7 +373,17 @@ export default function TransactionsPage() {
       if (error) { setDeleting(false); showToast("Erro ao excluir: " + error.message); return; }
       // Reverte saldo
       const delta = deleteRow.type === "income" ? -deleteRow.amount : deleteRow.amount;
-      await updateWalletBalance(supabase, user.id, delta);
+      try {
+        await updateWalletBalance(supabase, user.id, delta);
+      } catch (error) {
+        setDeleteRow(null);
+        setDeleteAllInstallments(false);
+        setDeleting(false);
+        await load();
+        window.dispatchEvent(new Event("finapp:data-changed"));
+        showToast("Transação excluída, mas o saldo não foi atualizado: " + getErrorMessage(error));
+        return;
+      }
       showToast("Excluido");
     } else {
       // card_transaction: deleta e remove bill vinculada

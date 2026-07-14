@@ -19,5 +19,6 @@ export async function updateWalletBalance(
   const { error } = await supabase.rpc("increment_wallet_balance", { p_delta: delta });
   if (error) {
     console.error("updateWalletBalance error:", error.message);
+    throw error;
   }
 }

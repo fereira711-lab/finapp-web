@@ -155,6 +155,33 @@ type BillSettlementRow = Bill & {
   category?: string | null;
 };
 
+type BillSettlementResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      transactionCreated: boolean;
+      transactionId?: string;
+      balanceUpdated: boolean;
+    };
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "Erro inesperado";
+}
+
+function getSettlementFailureDetails(result: Exclude<BillSettlementResult, { ok: true }>): string {
+  if (!result.transactionCreated) return "";
+  if (!result.balanceUpdated) {
+    return ` Transaction criada${result.transactionId ? ` (${result.transactionId})` : ""} sem concluir a Bill.`;
+  }
+  return ` Bill permaneceu pendente após criar a Transaction${result.transactionId ? ` (${result.transactionId})` : ""}.`;
+}
+
 export default function BillsPage() {
   const now = new Date();
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
@@ -424,11 +451,11 @@ export default function BillsPage() {
     userId: string,
     bill: BillSettlementRow,
     liquidationDate: string,
-  ): Promise<{ error?: string }> {
+  ): Promise<BillSettlementResult> {
     const amount = Math.abs(bill.amount);
     const txType = bill.type === "payable" ? "expense" : "income";
     const signedAmount = txType === "income" ? amount : -amount;
-    const { error: txError } = await supabase.from("transactions").insert({
+    const { data: createdTx, error: txError } = await supabase.from("transactions").insert({
       user_id: userId,
       account_id: bill.account_id ?? null,
       description: bill.description,
@@ -437,14 +464,29 @@ export default function BillsPage() {
       date: liquidationDate,
       type: txType,
       status: "completed",
-    });
+    }).select("id").single();
 
     if (txError) {
-      return { error: txError.message };
+      return {
+        ok: false,
+        error: txError.message,
+        transactionCreated: false,
+        balanceUpdated: false,
+      };
     }
 
     const delta = txType === "income" ? amount : -amount;
-    await updateWalletBalance(supabase, userId, delta);
+    try {
+      await updateWalletBalance(supabase, userId, delta);
+    } catch (error) {
+      return {
+        ok: false,
+        error: getErrorMessage(error),
+        transactionCreated: true,
+        transactionId: createdTx?.id,
+        balanceUpdated: false,
+      };
+    }
 
     const { error: billError } = await supabase
       .from("bills")
@@ -452,10 +494,16 @@ export default function BillsPage() {
       .eq("id", bill.id);
 
     if (billError) {
-      return { error: billError.message };
+      return {
+        ok: false,
+        error: billError.message,
+        transactionCreated: true,
+        transactionId: createdTx?.id,
+        balanceUpdated: true,
+      };
     }
 
-    return {};
+    return { ok: true };
   }
 
   async function openCardDetail(group: CardBillGroup) {
@@ -553,9 +601,9 @@ export default function BillsPage() {
     if (!bill || bill.status === "paid") { setMarkingId(null); return; }
 
     const liquidationDate = new Date().toISOString().split("T")[0];
-    const { error } = await settleBill(supabase, user.id, bill, liquidationDate);
-    if (error) {
-      showToast("Erro ao liquidar conta: " + error);
+    const result = await settleBill(supabase, user.id, bill, liquidationDate);
+    if (!result.ok) {
+      showToast("Erro ao liquidar conta: " + result.error + getSettlementFailureDetails(result));
       setMarkingId(null);
       return;
     }
@@ -575,15 +623,23 @@ export default function BillsPage() {
     const pendingBills = group.bills.filter((b) => b.status !== "paid") as BillSettlementRow[];
 
     for (const bill of pendingBills) {
-      const { error } = await settleBill(supabase, user.id, bill, liquidationDate);
-      if (error) {
-        showToast("Erro ao liquidar fatura: " + error);
+      const result = await settleBill(supabase, user.id, bill, liquidationDate);
+      if (!result.ok) {
+        showToast("Erro ao liquidar fatura: " + result.error + getSettlementFailureDetails(result));
         setMarkingId(null);
         return;
       }
     }
 
-    await supabase.from("credit_cards").update({ status: "paid" }).eq("id", group.cardId);
+    const { error: cardStatusError } = await supabase
+      .from("credit_cards")
+      .update({ status: "paid" })
+      .eq("id", group.cardId);
+    if (cardStatusError) {
+      showToast("Fatura liquidada, mas o status do cartão não foi atualizado: " + cardStatusError.message);
+      setMarkingId(null);
+      return;
+    }
 
     setLoading(true);
     await load();

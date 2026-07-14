@@ -44,6 +44,15 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
     setTimeout(() => setToast(null), 3000);
   }
 
+  function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "object" && error && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string") return message;
+    }
+    return "Erro inesperado";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -104,7 +113,22 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
       });
       if (error) { setSaving(false); showToast("Erro: " + error.message); return; }
       const delta = type === "income" ? totalAmount : -totalAmount;
-      await updateWalletBalance(supabase, user.id, delta);
+      try {
+        await updateWalletBalance(supabase, user.id, delta);
+      } catch (error) {
+        setSaving(false);
+        onClose();
+        onAdded();
+        window.dispatchEvent(new Event("finapp:data-changed"));
+        showToast("Movimentação salva, mas o saldo não foi atualizado: " + getErrorMessage(error));
+        setType("expense"); setMethod("pix");
+        setCardId(cards[0]?.id || "");
+        setDesc(""); setAmount("");
+        setDate(new Date().toISOString().split("T")[0]);
+        setCategory("outros");
+        setInstallments(false); setNumInstallments("2");
+        return;
+      }
       showToast(type === "income" ? "Receita registrada" : "Gasto registrado");
     }
 
