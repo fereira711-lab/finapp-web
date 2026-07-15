@@ -84,12 +84,74 @@ function getBillBorderClass(dueDate: string, status: string): string {
   return "";
 }
 
+type BillNoteParts = {
+  cardId: string | null;
+  settlementTransactionId: string | null;
+  userNotes: string;
+};
+
+function parseBillNotes(rawNotes: string | null): BillNoteParts {
+  if (!rawNotes) {
+    return { cardId: null, settlementTransactionId: null, userNotes: "" };
+  }
+
+  const parts = rawNotes.split("|");
+  let cardId: string | null = null;
+  let settlementTransactionId: string | null = null;
+  let userNotes = "";
+  const extraParts: string[] = [];
+
+  for (const part of parts) {
+    if (part.startsWith("card:") && !cardId) {
+      cardId = part.slice(5) || null;
+      continue;
+    }
+    if (part.startsWith("settlement_tx:") && !settlementTransactionId) {
+      settlementTransactionId = part.slice("settlement_tx:".length) || null;
+      continue;
+    }
+    if (part.startsWith("note:") && !userNotes) {
+      const encoded = part.slice(5);
+      try {
+        userNotes = decodeURIComponent(encoded);
+      } catch {
+        userNotes = encoded;
+      }
+      continue;
+    }
+    if (part) extraParts.push(part);
+  }
+
+  if (!cardId && !settlementTransactionId && !userNotes && extraParts.length === 0) {
+    return { cardId: null, settlementTransactionId: null, userNotes: rawNotes };
+  }
+
+  if (!userNotes && extraParts.length > 0) {
+    userNotes = extraParts.join("|");
+  }
+
+  return { cardId, settlementTransactionId, userNotes };
+}
+
+function buildBillNotes({ cardId, settlementTransactionId, userNotes }: BillNoteParts): string | null {
+  const trimmedUserNotes = userNotes.trim();
+  if (!cardId && !settlementTransactionId) {
+    return trimmedUserNotes || null;
+  }
+
+  const parts: string[] = [];
+  if (cardId) parts.push(`card:${cardId}`);
+  if (settlementTransactionId) parts.push(`settlement_tx:${settlementTransactionId}`);
+  if (trimmedUserNotes) parts.push(`note:${encodeURIComponent(trimmedUserNotes)}`);
+  return parts.join("|");
+}
+
 function isCardBill(b: Bill): boolean {
-  return !!(b.notes && b.notes.startsWith("card:"));
+  return !!parseBillNotes(b.notes).cardId;
 }
 
 function getCardIdFromBill(b: Bill): string {
-  return (b.notes || "").replace("card:", "");
+  return parseBillNotes(b.notes).cardId || "";
 }
 
 function getCardNameFromBill(b: Bill): string {
@@ -135,6 +197,25 @@ type BillSettlementResult =
       transactionId?: string;
       balanceUpdated: boolean;
     };
+
+type BillCancellationResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+    };
+
+type SettledTransactionRow = {
+  id: string;
+  user_id: string;
+  account_id: string | null;
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  type: "income" | "expense";
+  status: string;
+};
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -182,6 +263,7 @@ export default function BillsPage() {
   const [cardDetailTxs, setCardDetailTxs] = useState<CardTransaction[]>([]);
   const [cardDetailName, setCardDetailName] = useState("");
   const [cardDetailLoading, setCardDetailLoading] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -410,9 +492,15 @@ export default function BillsPage() {
   function openEdit(b: Bill) {
     setEditingId(b.id); setDesc(b.description); setAmount(String(b.amount));
     setDueDate(b.due_date); setType(b.type); setStatus(b.status);
-    setNotes(b.notes || ""); setShowForm(true);
+    setNotes(parseBillNotes(b.notes).userNotes); setShowForm(true);
   }
   function closeForm() { setShowForm(false); resetForm(); }
+
+  const editingBill = useMemo(
+    () => bills.find((bill) => bill.id === editingId) || null,
+    [bills, editingId],
+  );
+  const isEditingPaidBill = editingBill?.status === "paid";
 
   async function settleBill(
     supabase: ReturnType<typeof createClient>,
@@ -456,9 +544,17 @@ export default function BillsPage() {
       };
     }
 
+    const noteParts = parseBillNotes(bill.notes || null);
+
     const { error: billError } = await supabase
       .from("bills")
-      .update({ status: "paid" })
+      .update({
+        status: "paid",
+        notes: buildBillNotes({
+          ...noteParts,
+          settlementTransactionId: createdTx.id,
+        }),
+      })
       .eq("id", bill.id);
 
     if (billError) {
@@ -468,6 +564,100 @@ export default function BillsPage() {
         transactionCreated: true,
         transactionId: createdTx?.id,
         balanceUpdated: true,
+      };
+    }
+
+    return { ok: true };
+  }
+
+  async function cancelBillPayment(
+    supabase: ReturnType<typeof createClient>,
+    userId: string,
+    bill: BillSettlementRow,
+  ): Promise<BillCancellationResult> {
+    const noteParts = parseBillNotes(bill.notes || null);
+    const transactionId = noteParts.settlementTransactionId;
+
+    if (!transactionId) {
+      return {
+        ok: false,
+        error: "A Bill paga não possui vínculo confiável com a Transaction de liquidação.",
+      };
+    }
+
+    const { data: transactionData, error: transactionError } = await supabase
+      .from("transactions")
+      .select("id, user_id, account_id, description, amount, category, date, type, status")
+      .eq("id", transactionId)
+      .single();
+    const transaction = transactionData as SettledTransactionRow | null;
+
+    if (transactionError || !transaction) {
+      return {
+        ok: false,
+        error: "Não foi possível localizar a Transaction vinculada com segurança.",
+      };
+    }
+
+    const reversalDelta = -transaction.amount;
+    try {
+      await updateWalletBalance(supabase, userId, reversalDelta);
+    } catch (error) {
+      return {
+        ok: false,
+        error: "Não foi possível reverter o saldo: " + getErrorMessage(error),
+      };
+    }
+
+    const { error: deleteTransactionError } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("id", transaction.id);
+
+    if (deleteTransactionError) {
+      try {
+        await updateWalletBalance(supabase, userId, transaction.amount);
+      } catch (rollbackError) {
+        return {
+          ok: false,
+          error:
+            "A reversão do saldo foi aplicada, mas a Transaction não pôde ser excluída e o rollback falhou: " +
+            getErrorMessage(rollbackError),
+        };
+      }
+
+      return {
+        ok: false,
+        error: "A Transaction vinculada não pôde ser excluída.",
+      };
+    }
+
+    const { error: billError } = await supabase
+      .from("bills")
+      .update({
+        status: "pending",
+        notes: buildBillNotes({
+          ...noteParts,
+          settlementTransactionId: null,
+        }),
+      })
+      .eq("id", bill.id);
+
+    if (billError) {
+      let rollbackMessage = "";
+
+      try {
+        const { error: restoreTransactionError } = await supabase.from("transactions").insert(transaction);
+        if (restoreTransactionError) throw restoreTransactionError;
+        await updateWalletBalance(supabase, userId, transaction.amount);
+      } catch (rollbackError) {
+        rollbackMessage =
+          " Não foi possível restaurar automaticamente a liquidação: " + getErrorMessage(rollbackError);
+      }
+
+      return {
+        ok: false,
+        error: "A Bill não pôde voltar para pendente." + rollbackMessage,
       };
     }
 
@@ -508,10 +698,33 @@ export default function BillsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaving(false); return; }
 
+    if (status === "paid") {
+      setSaving(false);
+      showToast("Use a ação de quitar para marcar a conta como paga ou recebida.");
+      return;
+    }
+
+    if (editingId && editingBill?.status === "paid") {
+      setSaving(false);
+      showToast("Cancele o pagamento antes de editar uma conta paga.");
+      return;
+    }
+
     const parsedAmount = parseFloat(amount);
+    const existingNoteParts = parseBillNotes(editingBill?.notes || null);
     let billData = {
-      description: desc.trim(), amount: parsedAmount, due_date: dueDate,
-      type, status, recurrent: false, recurrence_day: null, notes: notes.trim() || null,
+      description: desc.trim(),
+      amount: parsedAmount,
+      due_date: dueDate,
+      type,
+      status,
+      recurrent: false,
+      recurrence_day: null,
+      notes: buildBillNotes({
+        cardId: existingNoteParts.cardId,
+        settlementTransactionId: existingNoteParts.settlementTransactionId,
+        userNotes: notes,
+      }),
     };
 
     if (editingId) {
@@ -536,9 +749,51 @@ export default function BillsPage() {
     if (!editingId) return;
     setSaving(true);
     const supabase = createClient();
+    const bill = bills.find((item) => item.id === editingId);
+    if (!bill) {
+      setSaving(false);
+      return;
+    }
+
+    if (bill.status === "paid") {
+      setSaving(false);
+      showToast("Cancele o pagamento antes de excluir uma conta paga.");
+      return;
+    }
+
     await supabase.from("bills").delete().eq("id", editingId);
 
     closeForm(); setSaving(false); setLoading(true); load();
+  }
+
+  async function handleCancelPayment(id: string) {
+    const bill = bills.find((item) => item.id === id) as BillSettlementRow | undefined;
+    if (!bill || bill.status !== "paid") return;
+
+    const confirmed = window.confirm(
+      "Cancelar este pagamento? O saldo será revertido e a Transaction vinculada será excluída.",
+    );
+    if (!confirmed) return;
+
+    setCancellingId(id);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setCancellingId(null);
+      return;
+    }
+
+    const result = await cancelBillPayment(supabase, user.id, bill);
+    if (!result.ok) {
+      showToast("Erro ao cancelar pagamento: " + result.error);
+      setCancellingId(null);
+      return;
+    }
+
+    closeForm();
+    setLoading(true);
+    await load();
+    setCancellingId(null);
   }
 
   async function markAsPaid(id: string) {
@@ -765,8 +1020,8 @@ export default function BillsPage() {
                 <select value={status} onChange={(e) => setStatus(e.target.value as "pending" | "paid" | "overdue")}
                   className="w-full glass-input px-3 py-3 text-base text-white">
                   <option value="pending" className="bg-[#1a1a2e]">Pendente</option>
-                  <option value="paid" className="bg-[#1a1a2e]">Paga</option>
                   <option value="overdue" className="bg-[#1a1a2e]">Atrasada</option>
+                  {isEditingPaidBill && <option value="paid" className="bg-[#1a1a2e]">Paga</option>}
                 </select>
               </div>
             </div>
@@ -776,15 +1031,25 @@ export default function BillsPage() {
                 className="w-full glass-input px-3 py-3 text-base text-white resize-none" placeholder="Opcional..." />
             </div>
             <div className="flex gap-3">
-              {editingId && (
+              {editingId && !isEditingPaidBill && (
                 <button type="button" onClick={handleDelete} disabled={saving}
                   className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50">
                   <Trash2 size={16} />
                 </button>
               )}
-              <button type="submit" disabled={saving}
+              {editingId && isEditingPaidBill && (
+                <button
+                  type="button"
+                  onClick={() => handleCancelPayment(editingId)}
+                  disabled={saving || cancellingId === editingId}
+                  className="px-4 py-3 rounded-xl bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition-colors disabled:opacity-50"
+                >
+                  {cancellingId === editingId ? "Cancelando..." : "Cancelar pagamento"}
+                </button>
+              )}
+              <button type="submit" disabled={saving || isEditingPaidBill}
                 className="flex-1 bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
-                {saving ? "Salvando..." : editingId ? "Salvar alterações" : "Adicionar conta"}
+                {saving ? "Salvando..." : isEditingPaidBill ? "Conta paga" : editingId ? "Salvar alteracoes" : "Adicionar conta"}
               </button>
             </div>
           </form>
@@ -936,6 +1201,16 @@ export default function BillsPage() {
                         title="Marcar como pago"
                         className="p-2 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors disabled:opacity-50">
                         <Check size={16} />
+                      </button>
+                    )}
+                    {b.status === "paid" && (
+                      <button
+                        onClick={() => handleCancelPayment(b.id)}
+                        disabled={cancellingId === b.id}
+                        title="Cancelar pagamento"
+                        className="p-2 rounded-xl bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw size={16} className={cancellingId === b.id ? "animate-spin" : ""} />
                       </button>
                     )}
                   </div>

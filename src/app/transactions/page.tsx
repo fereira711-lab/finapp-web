@@ -413,7 +413,7 @@ export default function TransactionsPage() {
         }
         await supabase.from("bills").delete()
           .eq("user_id", user.id)
-          .eq("notes", `card:${tx.card_id}`)
+          .like("notes", `card:${tx.card_id}%`)
           .like("description", `${card.name} - ${tx.description}%`);
         showToast("Parcelas removidas");
       } else {
@@ -424,7 +424,7 @@ export default function TransactionsPage() {
             : `${card.name} - ${tx.description}`;
           await supabase.from("bills").delete()
             .eq("user_id", user.id)
-            .eq("notes", `card:${tx.card_id}`)
+            .like("notes", `card:${tx.card_id}%`)
             .eq("description", billDescPattern);
         }
         showToast("Lancamento removido");

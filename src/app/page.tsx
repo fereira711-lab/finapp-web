@@ -483,7 +483,7 @@ export default function DashboardPage() {
         }
         await supabase.from("bills").delete()
           .eq("user_id", user.id)
-          .eq("notes", `card:${cardId}`)
+          .like("notes", `card:${cardId}%`)
           .like("description", `${cardName} - ${tx.description}%`);
         showDelToast("Parcelas removidas");
       } else {
@@ -494,7 +494,7 @@ export default function DashboardPage() {
             : `${cardName} - ${tx.description}`;
           await supabase.from("bills").delete()
             .eq("user_id", user.id)
-            .eq("notes", `card:${cardId}`)
+            .like("notes", `card:${cardId}%`)
             .eq("description", billDescPattern);
         }
         showDelToast("Lancamento removido");

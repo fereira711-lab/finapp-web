@@ -228,7 +228,7 @@ export default function CreditCardsPage() {
       // Carrega todos os card_transactions e bills vinculados
       const [txRes, billsRes] = await Promise.all([
         supabase.from("card_transactions").select("*").eq("card_id", editingCardId),
-        supabase.from("bills").select("*").eq("notes", `card:${editingCardId}`),
+        supabase.from("bills").select("*").like("notes", `card:${editingCardId}%`),
       ]);
 
       const txs = (txRes.data || []) as CardTransaction[];
@@ -269,7 +269,7 @@ export default function CreditCardsPage() {
       if (originalCard.name !== pendingCardData.name) {
         const { data: bills } = await supabase
           .from("bills").select("id, description")
-          .eq("notes", `card:${editingCardId}`);
+          .like("notes", `card:${editingCardId}%`);
         if (bills) {
           for (const b of bills) {
             const newDesc = b.description.replace(
