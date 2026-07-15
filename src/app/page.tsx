@@ -425,19 +425,43 @@ export default function DashboardPage() {
 
     if (deleteRow.source === "transaction") {
       const realId = deleteRow.id.replace(/^tx-/, "");
-      const { error } = await supabase.from("transactions").delete().eq("id", realId);
-      if (error) { setDeleting(false); showDelToast("Erro: " + error.message); return; }
-      const delta = deleteRow.type === "income" ? -deleteRow.amount : deleteRow.amount;
+      const { data: transaction, error: transactionError } = await supabase
+        .from("transactions")
+        .select("amount")
+        .eq("id", realId)
+        .single();
+      if (transactionError || !transaction) {
+        setDeleting(false);
+        showDelToast("Erro ao carregar transação: " + (transactionError?.message || "Transação não encontrada"));
+        return;
+      }
+
+      const delta = -transaction.amount;
       try {
         await updateWalletBalance(supabase, user.id, delta);
       } catch (error) {
-        setDeleteRow(null);
-        setDeleteAllInst(false);
         setDeleting(false);
-        await loadDashboard();
-        showDelToast("Transação excluída, mas o saldo não foi atualizado: " + getErrorMessage(error));
+        showDelToast("Não foi possível reverter o saldo. A transação não foi excluída: " + getErrorMessage(error));
         return;
       }
+
+      const { error } = await supabase.from("transactions").delete().eq("id", realId);
+      if (error) {
+        try {
+          await updateWalletBalance(supabase, user.id, transaction.amount);
+        } catch (rollbackError) {
+          setDeleting(false);
+          await loadDashboard();
+          showDelToast(
+            "Saldo revertido, mas a exclusão falhou e o rollback não concluiu: " + getErrorMessage(rollbackError),
+          );
+          return;
+        }
+        setDeleting(false);
+        showDelToast("A reversão do saldo foi desfeita porque a transação não pôde ser excluída: " + error.message);
+        return;
+      }
+
       showDelToast("Excluido");
     } else {
       const realId = deleteRow.id.replace(/^card-/, "");
