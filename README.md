@@ -4,7 +4,7 @@ Aplicacao web financeira pessoal baseada em Next.js, React, TypeScript e Supabas
 
 ## Objetivo
 
-Centralizar saldo, transacoes, contas, cartoes, metas, relatorios e assistencia por IA em uma interface unica com operacao manual dos lancamentos financeiros.
+Centralizar saldo, transacoes, agenda financeira, cartoes, metas, relatorios e assistencia por IA em uma interface unica com operacao manual dos lancamentos financeiros.
 
 ## Stack
 
@@ -28,8 +28,8 @@ Centralizar saldo, transacoes, contas, cartoes, metas, relatorios e assistencia 
 
 - dashboard financeiro
 - transacoes
-- contas e saldo
-- contas a pagar
+- agenda financeira
+- contas e saldo liquidado
 - cartoes de credito
 - metas
 - relatorios
@@ -76,7 +76,7 @@ Camada Supabase atual:
 
 - o modulo de recorrencia foi removido do projeto;
 - a integracao bancaria com Pluggy foi removida do projeto;
-- os lancamentos passam a ser exclusivamente manuais;
+- os lancamentos seguem operacao exclusivamente manual;
 - futuras automacoes e futuras integracoes bancarias nao fazem parte do escopo atual.
 
 ## Observacoes

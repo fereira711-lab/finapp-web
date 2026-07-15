@@ -27,7 +27,6 @@ import {
   Wallet,
   TrendingUp,
   TrendingDown,
-  CalendarClock,
   CreditCard,
   ExternalLink,
   ChevronDown,
@@ -40,12 +39,6 @@ type StatusFilter = "all" | "pending" | "paid" | "overdue";
 const MONTH_NAMES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];
-
-const PROJECTION_OPTIONS = [
-  { value: 3, label: "3 meses" },
-  { value: 6, label: "6 meses" },
-  { value: 12, label: "12 meses" },
 ];
 
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
@@ -66,28 +59,6 @@ const statusLabel: Record<string, string> = {
   paid: "Paga",
   overdue: "Atrasada",
 };
-
-function getDueDateForMonth(baseDate: string, monthsAhead: number): string {
-  const d = new Date(baseDate + "T12:00:00");
-  const day = d.getDate();
-  const target = new Date(d.getFullYear(), d.getMonth() + monthsAhead, 1);
-  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
-  target.setDate(Math.min(day, lastDay));
-  return target.toISOString().split("T")[0];
-}
-
-function getProjectionEndDate(baseDate: string, months: number): string {
-  return getDueDateForMonth(baseDate, months);
-}
-
-function isProjectedBill(b: Bill): boolean {
-  if (!b.recurrent || b.status !== "pending") return false;
-  const today = new Date();
-  const currentYM = today.getFullYear() * 12 + today.getMonth();
-  const d = new Date(b.due_date + "T12:00:00");
-  const billYM = d.getFullYear() * 12 + d.getMonth();
-  return billYM > currentYM;
-}
 
 function getDueDateLabel(dueDate: string, status: string): { text: string; color: string } {
   if (status === "paid") return { text: `Paga em ${formatDate(dueDate)}`, color: "text-green-400" };
@@ -204,8 +175,6 @@ export default function BillsPage() {
   const [dueDate, setDueDate] = useState("");
   const [type, setType] = useState<"payable" | "receivable">("payable");
   const [status, setStatus] = useState<"pending" | "paid" | "overdue">("pending");
-  const [recurrent, setRecurrent] = useState(false);
-  const [projectionMonths, setProjectionMonths] = useState(3);
   const [notes, setNotes] = useState("");
 
   // Card detail modal
@@ -412,7 +381,6 @@ export default function BillsPage() {
   });
 
   // Totals — use regular bills + card group totals (avoids double counting)
-  // BUG FIX #2: Excluir contas pagas do total "A PAGAR"
   const { totalPayable, totalReceivable, saldoPrevisto } = useMemo(
     () => getOfficialBillTotals(monthBills, currentBalance),
     [monthBills, currentBalance],
@@ -435,14 +403,14 @@ export default function BillsPage() {
 
   function resetForm() {
     setDesc(""); setAmount(""); setDueDate(""); setType("payable");
-    setStatus("pending"); setRecurrent(false); setProjectionMonths(3);
+    setStatus("pending");
     setNotes(""); setEditingId(null);
   }
   function openNew() { resetForm(); setShowForm(true); }
   function openEdit(b: Bill) {
     setEditingId(b.id); setDesc(b.description); setAmount(String(b.amount));
     setDueDate(b.due_date); setType(b.type); setStatus(b.status);
-    setRecurrent(b.recurrent); setNotes(b.notes || ""); setShowForm(true);
+    setNotes(b.notes || ""); setShowForm(true);
   }
   function closeForm() { setShowForm(false); resetForm(); }
 
@@ -541,21 +509,16 @@ export default function BillsPage() {
     if (!user) { setSaving(false); return; }
 
     const parsedAmount = parseFloat(amount);
-    const recurrenceDay = recurrent ? new Date(dueDate + "T12:00:00").getDate() : null;
-
     let billData = {
       description: desc.trim(), amount: parsedAmount, due_date: dueDate,
-      type, status, recurrent, recurrence_day: recurrenceDay, notes: notes.trim() || null,
+      type, status, recurrent: false, recurrence_day: null, notes: notes.trim() || null,
     };
 
-    // BUG FIX #1: Recalcular status ao editar due_date
     if (editingId) {
       const today = new Date().toISOString().split("T")[0];
-      // Se a nova due_date é futura e status é 'overdue', mudar para 'pending'
       if (status === "overdue" && dueDate >= today) {
         billData.status = "pending";
       }
-      // Se a nova due_date é passada e status é 'pending', mudar para 'overdue'
       if (status === "pending" && dueDate < today) {
         billData.status = "overdue";
       }
@@ -565,20 +528,6 @@ export default function BillsPage() {
       const today = new Date().toISOString().split("T")[0];
       if (status === "pending" && dueDate < today) { billData.status = "overdue"; }
       await supabase.from("bills").insert({ user_id: user.id, ...billData });
-
-      if (recurrent && projectionMonths > 0) {
-        const futureBills = [];
-        for (let i = 1; i <= projectionMonths; i++) {
-          const futureDue = getDueDateForMonth(dueDate, i);
-          futureBills.push({
-            user_id: user.id, description: desc.trim(), amount: parsedAmount,
-            due_date: futureDue, type, status: "pending" as const,
-            recurrent: true, recurrence_day: recurrenceDay, notes: notes.trim() || null,
-          });
-        }
-        if (futureBills.length > 0) { await supabase.from("bills").insert(futureBills); }
-        showToast(`Conta criada com projeção de ${projectionMonths} meses até ${formatDate(getProjectionEndDate(dueDate, projectionMonths))}`);
-      }
     }
     closeForm(); setSaving(false); setLoading(true); load();
   }
@@ -645,10 +594,6 @@ export default function BillsPage() {
     await load();
     setMarkingId(null);
   }
-
-  const projectionPreview = recurrent && dueDate && !editingId
-    ? `Serão criadas ${projectionMonths + 1} contas até ${formatDate(getProjectionEndDate(dueDate, projectionMonths))}`
-    : null;
 
   const hasItems = filteredItems.length > 0;
 
@@ -825,29 +770,6 @@ export default function BillsPage() {
                 </select>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={recurrent} onChange={(e) => setRecurrent(e.target.checked)}
-                  className="w-5 h-5 rounded accent-[#6366F1]" id="recurrent" />
-                <label htmlFor="recurrent" className="text-sm text-white/60 flex items-center gap-1 cursor-pointer">
-                  <RefreshCw size={14} className="text-white/45" /> Recorrente
-                </label>
-              </div>
-              {recurrent && !editingId && (
-                <div className="glass-card p-3 space-y-2">
-                  <label className="label-upper block">Projetar para quantos meses?</label>
-                  <select value={projectionMonths} onChange={(e) => setProjectionMonths(Number(e.target.value))}
-                    className="w-full glass-input px-3 py-2.5 text-sm text-white">
-                    {PROJECTION_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value} className="bg-[#1a1a2e]">{opt.label}</option>
-                    ))}
-                  </select>
-                  {projectionPreview && (
-                    <p className="text-xs text-[#818CF8] flex items-center gap-1.5"><CalendarClock size={12} /> {projectionPreview}</p>
-                  )}
-                </div>
-              )}
-            </div>
             <div>
               <label className="label-upper block mb-1">Observacoes</label>
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
@@ -986,25 +908,14 @@ export default function BillsPage() {
               );
             } else {
               const b = item.data;
-              const projected = isProjectedBill(b);
               const dateLabel = getDueDateLabel(b.due_date, b.status);
               const borderClass = getBillBorderClass(b.due_date, b.status);
               return (
                 <div key={b.id}
-                  className={`flex items-center justify-between py-3 glass-divider ${projected ? "opacity-55" : ""} ${borderClass}`}>
+                  className={`flex items-center justify-between py-3 glass-divider ${borderClass}`}>
                   <button onClick={() => openEdit(b)} className="min-w-0 flex-1 text-left">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium text-sm truncate">{b.description}</p>
-                      {b.recurrent && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366F1]/15 text-[#818CF8] text-[10px] uppercase tracking-wider flex-shrink-0">
-                          <RefreshCw size={10} /> Recorrente
-                        </span>
-                      )}
-                      {projected && (
-                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 text-white/40 text-[10px] uppercase tracking-wider flex-shrink-0">
-                          <CalendarClock size={10} /> Projetado
-                        </span>
-                      )}
                       <Pencil size={12} className="text-white/20 flex-shrink-0" />
                     </div>
                     <p className={`text-xs mt-0.5 ${dateLabel.color}`}>

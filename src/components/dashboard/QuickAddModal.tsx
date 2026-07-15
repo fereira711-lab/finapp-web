@@ -105,7 +105,7 @@ export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAd
       const { error } = await supabase.from("transactions").insert({
         user_id: user.id,
         description: desc.trim(),
-        amount: totalAmount,
+        amount: type === "income" ? totalAmount : -totalAmount,
         category: resolvedCategory,
         date,
         type,
