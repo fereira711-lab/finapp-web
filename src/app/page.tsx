@@ -475,8 +475,6 @@ export default function DashboardPage() {
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const daysPassed = Math.max(1, Math.min(today.getDate(), daysInMonth));
   const netDailyAverage = monthlyResult / daysPassed;
-  const monthEndForecast = balance + (netDailyAverage * (daysInMonth - daysPassed));
-  const currentMonthBillsResult = receivableBillsTotal - pendingBillsTotal;
   const financialTrend = netDailyAverage < 0
     ? {
         label: "piorando",
@@ -709,31 +707,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className={`grid gap-3 ${daysUntilDepleted !== null ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
-            <div className="glass-card p-4" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
-              <div className="flex items-center gap-2 mb-2">
-                <ArrowUpRight size={16} className="text-[#818CF8]" />
-                <span className="text-sm font-semibold">Projeção do mês</span>
-              </div>
-              <p className="text-xs text-white/60">Considera apenas compromissos de {currentMonthLabel}.</p>
-              <div className="mt-3 space-y-1 text-xs text-white/60">
-                <div className="flex items-center justify-between">
-                  <span>Receitas do mês</span>
-                  <span className="text-green-400">{formatCurrency(receivableBillsTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Despesas do mês</span>
-                  <span className="text-yellow-400">{formatCurrency(pendingBillsTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between pt-1 border-t border-white/10">
-                  <span>Resultado do mês</span>
-                  <span className={currentMonthBillsResult >= 0 ? "text-green-400 font-semibold" : "text-red-400 font-semibold"}>
-                    {currentMonthBillsResult >= 0 ? "+" : "-"}{formatCurrency(Math.abs(currentMonthBillsResult))}
-                  </span>
-                </div>
-              </div>
-            </div>
-
+          <div className={`grid gap-3 ${daysUntilDepleted !== null ? "md:grid-cols-2" : "md:grid-cols-1"}`}>
             <div className="glass-card p-4" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
               <div className="flex items-center gap-2 mb-2">
                 <Calculator size={16} className="text-[#818CF8]" />
