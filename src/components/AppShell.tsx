@@ -16,7 +16,13 @@ const PAGE_TITLES: Record<string, string> = {
   "/goals": "Metas",
 };
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  contentClassName = "",
+}: {
+  children: React.ReactNode;
+  contentClassName?: string;
+}) {
   const pathname = usePathname();
   const pageTitle = PAGE_TITLES[pathname] || "";
 
@@ -25,7 +31,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <MobileHeader />
       <main className="md:ml-64 pt-16 pb-20 md:py-8 min-h-screen px-4 md:px-10 md:flex md:items-center md:justify-center">
-        <div className="glass w-full max-w-3xl p-4 md:p-6 mx-auto">
+        <div className={`glass w-full max-w-3xl p-4 md:p-6 mx-auto ${contentClassName}`}>
           {children}
         </div>
       </main>

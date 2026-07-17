@@ -637,11 +637,11 @@ export default function DashboardPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell contentClassName="lg:max-w-6xl xl:max-w-[1500px] 2xl:max-w-[1600px]">
       {loading ? (
         <DashboardSkeleton />
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-5 lg:space-y-6">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="glass-card p-4" style={{ borderColor: financialStatus.border }}>
               <div className="flex items-start justify-between gap-3">
@@ -720,7 +720,7 @@ export default function DashboardPage() {
           </div>
 
           {/* ── Summary Cards ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Card
               title="Saldo Atual"
               value={formatCurrency(balance)}
@@ -774,8 +774,9 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          <div className="space-y-5 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] lg:gap-5 lg:items-start">
           {/* ── Agenda da Semana ── */}
-          <div className="glass-card p-4">
+          <div className="glass-card p-4 lg:col-start-1">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-semibold">Agenda da Semana</h2>
@@ -847,7 +848,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="glass-card p-4">
+          <div className="glass-card p-4 lg:col-start-1">
             <div className="flex items-center gap-2 mb-3">
               <Calculator size={16} className="text-[#818CF8]" />
               <div>
@@ -876,7 +877,7 @@ export default function DashboardPage() {
           </div>
 
           {/* ── Receitas + Despesas com variacao ── */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:col-start-2">
             {(() => {
               const recVar = prevReceitas === 0
                 ? (receitas > 0 ? { value: "+100%", positive: true } : { value: "—", positive: true })
@@ -924,7 +925,7 @@ export default function DashboardPage() {
 
           {/* ── Insights + Projecao ── */}
           {(insights.length > 0 || projection !== null) && (
-            <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+            <div className="glass-card p-4 space-y-2 lg:col-start-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
               <div className="flex items-center gap-2">
                 <Lightbulb size={16} className="text-[#818CF8]" />
                 <span className="text-sm font-semibold">Insights</span>
@@ -945,7 +946,7 @@ export default function DashboardPage() {
           )}
 
           {topCategory && (
-            <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+            <div className="glass-card p-4 space-y-2 lg:col-start-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
               <div className="flex items-center gap-2">
                 <Calculator size={16} className="text-[#818CF8]" />
                 <span className="text-sm font-semibold">Maior gasto</span>
@@ -960,7 +961,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="glass-card p-4 space-y-2" style={{ borderColor: behaviorStatus.border }}>
+          <div className="glass-card p-4 space-y-2 lg:col-start-2" style={{ borderColor: behaviorStatus.border }}>
             <div className="flex items-center gap-2">
               <AlertTriangle size={16} className={behaviorStatus.icon} />
               <span className="text-sm font-semibold">Comportamento financeiro</span>
@@ -981,7 +982,7 @@ export default function DashboardPage() {
 
           {/* Card total highlight */}
           {cardTotal > 0 && (
-            <Link href="/credit-cards" className="block">
+            <Link href="/credit-cards" className="block lg:col-start-2">
               <div className="glass-card p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <CreditCard size={18} className="text-[#6366F1]" />
@@ -997,7 +998,7 @@ export default function DashboardPage() {
 
           {/* Gráfico: Categorias do Cartão */}
           {generalCategoryData.length > 0 && (
-            <div className="glass-divider pb-5">
+            <div className="glass-divider pb-5 lg:col-start-1">
               <h2 className="label-upper mb-3">Categorias do Mês</h2>
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <ResponsiveContainer width="100%" height={200} className="sm:!w-1/2">
@@ -1026,7 +1027,7 @@ export default function DashboardPage() {
 
           {/* Alertas */}
           {!alerts.loading && (alerts.overdue.length > 0 || alerts.today.length > 0 || alerts.tomorrow.length > 0) && (
-            <Link href="/bills" className="block">
+            <Link href="/bills" className="block lg:col-start-1">
               <div className="glass-card p-4 space-y-2" style={{ borderColor: alerts.overdue.length > 0 ? "rgba(239,68,68,0.5)" : "rgba(234,179,8,0.5)" }}>
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={16} className={alerts.overdue.length > 0 ? "text-red-400" : "text-yellow-400"} />
@@ -1051,7 +1052,7 @@ export default function DashboardPage() {
 
           {/* Goal Alerts */}
           {goalProgress.filter((g) => g.pct >= 80).length > 0 && (
-            <Link href="/goals" className="block">
+            <Link href="/goals" className="block lg:col-start-2">
               <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(234,179,8,0.5)" }}>
                 <div className="flex items-center gap-2">
                   <Target size={16} className="text-yellow-400" />
@@ -1070,7 +1071,7 @@ export default function DashboardPage() {
 
           {/* Goals Widget - Top 3 */}
           {goalProgress.length > 0 && (
-            <div className="glass-divider pb-4">
+            <div className="glass-divider pb-4 lg:col-start-2">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="label-upper">Metas do Mes</h2>
                 <Link href="/goals" className="text-[10px] text-[#6366F1] hover:underline">Ver todas</Link>
@@ -1098,7 +1099,7 @@ export default function DashboardPage() {
           )}
 
           {/* Ultimas Transacoes */}
-          <div className="glass-divider pt-4">
+          <div className="glass-divider pt-4 lg:col-start-2">
             <h2 className="label-upper mb-3">Ultimas Transacoes</h2>
             {recentTx.length === 0 ? (
               <p className="text-white/30 text-sm">Nenhuma transacao encontrada.</p>
@@ -1159,6 +1160,7 @@ export default function DashboardPage() {
                 })}
               </div>
             )}
+          </div>
           </div>
         </div>
       )}
