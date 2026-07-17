@@ -62,6 +62,7 @@ export default function DashboardPage() {
   const [pendingBillsTotal, setPendingBillsTotal] = useState(0);
   const [receivableBillsTotal, setReceivableBillsTotal] = useState(0);
   const [projectedBalance, setProjectedBalance] = useState(0);
+  const [previousPendingBillsTotal, setPreviousPendingBillsTotal] = useState(0);
   const [pendingBills, setPendingBills] = useState<Bill[]>([]);
   const [receivableBills, setReceivableBills] = useState<Bill[]>([]);
   const [upcomingBills, setUpcomingBills] = useState<Bill[]>([]);
@@ -159,12 +160,31 @@ export default function DashboardPage() {
     const nextSeven = addLocalDays(startOfLocalDay(new Date()), 7);
     const nextSevenStr = `${nextSeven.getFullYear()}-${String(nextSeven.getMonth() + 1).padStart(2, "0")}-${String(nextSeven.getDate()).padStart(2, "0")}`;
 
-    const [accountsRes, monthTxRes, billsRes, recentTxRes, recentCardTxRes, cardTxRes, goalsRes, cardTxCatRes, creditCardsRes, prevTxRes, prevCardTxRes, upcomingBillsRes] = await Promise.all([
+    const [
+      accountsRes,
+      monthTxRes,
+      billsRes,
+      previousPendingBillsRes,
+      recentTxRes,
+      recentCardTxRes,
+      cardTxRes,
+      goalsRes,
+      cardTxCatRes,
+      creditCardsRes,
+      prevTxRes,
+      prevCardTxRes,
+      upcomingBillsRes,
+    ] = await Promise.all([
       supabase.from("accounts").select("id, balance, name").eq("user_id", user.id),
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
       supabase.from("bills").select("*").eq("user_id", user.id)
         .gte("due_date", startStr).lte("due_date", endStr),
+      supabase.from("bills").select("amount")
+        .eq("user_id", user.id)
+        .eq("type", "payable")
+        .neq("status", "paid")
+        .lt("due_date", startStr),
       // recentTxRes: ultimas transactions
       supabase.from("transactions").select("*")
         .eq("user_id", user.id).order("date", { ascending: false }).limit(10),
@@ -221,6 +241,9 @@ export default function DashboardPage() {
     setPendingBillsTotal(officialTotals.totalPayable);
     setReceivableBillsTotal(officialTotals.totalReceivable);
     setProjectedBalance(officialTotals.saldoPrevisto);
+    setPreviousPendingBillsTotal(
+      ((previousPendingBillsRes.data || []) as Array<{ amount: number }>).reduce((sum, bill) => sum + Math.abs(bill.amount), 0),
+    );
     setPendingBills(allBills.filter((bill) => bill.type === "payable" && bill.status !== "paid"));
     setReceivableBills(allBills.filter((bill) => bill.type === "receivable" && bill.status !== "paid"));
     setUpcomingBills((upcomingBillsRes.data || []) as Bill[]);
@@ -448,10 +471,12 @@ export default function DashboardPage() {
 
   const monthlyResult = receitas - despesas;
   const today = new Date();
+  const currentMonthLabel = today.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const daysPassed = Math.max(1, Math.min(today.getDate(), daysInMonth));
   const netDailyAverage = monthlyResult / daysPassed;
   const monthEndForecast = balance + (netDailyAverage * (daysInMonth - daysPassed));
+  const currentMonthBillsResult = receivableBillsTotal - pendingBillsTotal;
   const financialTrend = netDailyAverage < 0
     ? {
         label: "piorando",
@@ -690,10 +715,23 @@ export default function DashboardPage() {
                 <ArrowUpRight size={16} className="text-[#818CF8]" />
                 <span className="text-sm font-semibold">Projeção do mês</span>
               </div>
-              <p className="text-xs text-white/60">Se continuar nesse ritmo:</p>
-              <p className={`text-lg font-bold mt-1 ${monthEndForecast >= 0 ? "text-green-400" : "text-red-400"}`}>
-                Saldo final estimado: {formatCurrency(monthEndForecast)}
-              </p>
+              <p className="text-xs text-white/60">Considera apenas compromissos de {currentMonthLabel}.</p>
+              <div className="mt-3 space-y-1 text-xs text-white/60">
+                <div className="flex items-center justify-between">
+                  <span>Receitas do mês</span>
+                  <span className="text-green-400">{formatCurrency(receivableBillsTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Despesas do mês</span>
+                  <span className="text-yellow-400">{formatCurrency(pendingBillsTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-white/10">
+                  <span>Resultado do mês</span>
+                  <span className={currentMonthBillsResult >= 0 ? "text-green-400 font-semibold" : "text-red-400 font-semibold"}>
+                    {currentMonthBillsResult >= 0 ? "+" : "-"}{formatCurrency(Math.abs(currentMonthBillsResult))}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="glass-card p-4" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
@@ -718,6 +756,18 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {previousPendingBillsTotal > 0 && (
+            <div className="glass-card p-4" style={{ borderColor: "rgba(234,179,8,0.45)" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={16} className="text-yellow-400" />
+                <span className="text-sm font-semibold">Pendências anteriores</span>
+              </div>
+              <p className="text-xs text-white/60">Contas a pagar vencidas antes de {currentMonthLabel}.</p>
+              <p className="text-lg font-bold text-yellow-400 mt-1">{formatCurrency(previousPendingBillsTotal)}</p>
+              <p className="text-[11px] text-white/40 mt-1">Esse valor não entra na projeção principal do mês.</p>
+            </div>
+          )}
 
           {/* ── Summary Cards ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
