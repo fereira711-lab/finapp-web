@@ -447,6 +447,58 @@ export default function DashboardPage() {
         };
 
   const monthlyResult = receitas - despesas;
+  const recommendations: string[] = [];
+
+  if (projectedBalance < 0) {
+    recommendations.push("Você vai ficar negativo. Reduza gastos ou aumente receitas.");
+  }
+  if (despesas > receitas) {
+    recommendations.push("Você está gastando mais do que ganha.");
+  }
+  if (pendingBillsTotal > balance) {
+    recommendations.push("Você não tem saldo suficiente para cobrir suas contas.");
+  }
+
+  const cashRisk = projectedBalance < 0
+    ? {
+        key: "alto",
+        title: "Risco de Caixa",
+        message: "Alto risco de falta de dinheiro",
+        accent: "text-red-400",
+        border: "rgba(239,68,68,0.45)",
+        badge: "bg-red-500/10 text-red-400",
+      }
+    : projectedBalance < 200
+      ? {
+          key: "medio",
+          title: "Risco de Caixa",
+          message: "Atenção ao seu caixa",
+          accent: "text-yellow-400",
+          border: "rgba(234,179,8,0.45)",
+          badge: "bg-yellow-500/10 text-yellow-400",
+        }
+      : {
+          key: "baixo",
+          title: "Risco de Caixa",
+          message: "Sem risco imediato",
+          accent: "text-green-400",
+          border: "rgba(34,197,94,0.45)",
+          badge: "bg-green-500/10 text-green-400",
+        };
+
+  const next7DaysEntries = upcomingBills
+    .filter((bill) => bill.type === "receivable")
+    .reduce((total, bill) => total + bill.amount, 0);
+  const next7DaysExpenses = upcomingBills
+    .filter((bill) => bill.type === "payable")
+    .reduce((total, bill) => total + bill.amount, 0);
+  const next7DaysImpact = next7DaysEntries - next7DaysExpenses;
+
+  const topCategory = generalCategoryData[0] || null;
+  const topCategoryPct = topCategory && despesas > 0
+    ? Math.round((topCategory.value / despesas) * 100)
+    : 0;
+  const hasHighConsumptionBehavior = despesas > receitas;
 
   async function handleDeleteRow() {
     if (!deleteRow) return;
@@ -545,18 +597,47 @@ export default function DashboardPage() {
         <DashboardSkeleton />
       ) : (
         <div className="space-y-5">
-          <div className="glass-card p-4" style={{ borderColor: financialStatus.border }}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="label-upper mb-1">Status Financeiro</p>
-                <h2 className={`text-base font-semibold ${financialStatus.accent}`}>{financialStatus.title}</h2>
-                <p className="text-xs text-white/60 mt-1">{financialStatus.message}</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="glass-card p-4" style={{ borderColor: financialStatus.border }}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="label-upper mb-1">Status Financeiro</p>
+                  <h2 className={`text-base font-semibold ${financialStatus.accent}`}>{financialStatus.title}</h2>
+                  <p className="text-xs text-white/60 mt-1">{financialStatus.message}</p>
+                </div>
+                <span className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider ${financialStatus.badge}`}>
+                  {financialStatus.key}
+                </span>
               </div>
-              <span className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider ${financialStatus.badge}`}>
-                {financialStatus.key}
-              </span>
+            </div>
+
+            <div className="glass-card p-4" style={{ borderColor: cashRisk.border }}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="label-upper mb-1">{cashRisk.title}</p>
+                  <h2 className={`text-base font-semibold ${cashRisk.accent}`}>{cashRisk.message}</h2>
+                  <p className="text-xs text-white/60 mt-1">Leitura imediata do seu caixa com base no saldo previsto.</p>
+                </div>
+                <span className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider ${cashRisk.badge}`}>
+                  {cashRisk.key}
+                </span>
+              </div>
             </div>
           </div>
+
+          {recommendations.length > 0 && (
+            <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+              <div className="flex items-center gap-2">
+                <Lightbulb size={16} className="text-[#818CF8]" />
+                <span className="text-sm font-semibold">Recomendações</span>
+              </div>
+              <div className="space-y-1">
+                {recommendations.map((item, index) => (
+                  <p key={index} className="text-xs text-white/70">- {item}</p>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Summary Cards ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -686,6 +767,34 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          <div className="glass-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Calculator size={16} className="text-[#818CF8]" />
+              <div>
+                <h2 className="text-sm font-semibold">Próximos 7 dias</h2>
+                <p className="text-[10px] text-white/30 mt-0.5">Impacto de curto prazo com base na agenda já carregada.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="glass-card p-3">
+                <p className="label-upper mb-1">Entradas</p>
+                <p className="text-sm font-bold text-green-400">{formatCurrency(next7DaysEntries)}</p>
+              </div>
+              <div className="glass-card p-3">
+                <p className="label-upper mb-1">Saídas</p>
+                <p className="text-sm font-bold text-red-400">{formatCurrency(next7DaysExpenses)}</p>
+              </div>
+              <div className="glass-card p-3">
+                <p className="label-upper mb-1">Impacto</p>
+                <p className={`text-sm font-bold ${
+                  next7DaysImpact > 0 ? "text-green-400" : next7DaysImpact < 0 ? "text-red-400" : "text-white"
+                }`}>
+                  {next7DaysImpact > 0 ? "+" : ""}{formatCurrency(next7DaysImpact)}
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* ── Receitas + Despesas com variacao ── */}
           <div className="grid grid-cols-2 gap-3">
             {(() => {
@@ -751,6 +860,35 @@ export default function DashboardPage() {
                     <span className="text-white/40"> (no ritmo atual)</span>
                   </p>
                 )}
+              </div>
+            </div>
+          )}
+
+          {topCategory && (
+            <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+              <div className="flex items-center gap-2">
+                <Calculator size={16} className="text-[#818CF8]" />
+                <span className="text-sm font-semibold">Maior gasto</span>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-white/70">Você está gastando principalmente com:</p>
+                <p className="text-sm font-semibold text-white">
+                  {topCategory.name} <span className="text-white/40">({topCategoryPct}%)</span>
+                </p>
+                <p className="text-xs text-white/50">Sugestão: Revise essa categoria.</p>
+              </div>
+            </div>
+          )}
+
+          {hasHighConsumptionBehavior && (
+            <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(239,68,68,0.45)" }}>
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={16} className="text-red-400" />
+                <span className="text-sm font-semibold">Comportamento financeiro</span>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-red-400">Você está em padrão de prejuízo.</p>
+                <p className="text-xs text-white/60">Se continuar assim, seu saldo vai diminuir.</p>
               </div>
             </div>
           )}
