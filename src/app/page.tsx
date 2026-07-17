@@ -447,12 +447,58 @@ export default function DashboardPage() {
         };
 
   const monthlyResult = receitas - despesas;
+  const today = new Date();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const daysPassed = Math.max(1, Math.min(today.getDate(), daysInMonth));
+  const netDailyAverage = monthlyResult / daysPassed;
+  const monthEndForecast = balance + (netDailyAverage * (daysInMonth - daysPassed));
+  const financialTrend = netDailyAverage < 0
+    ? {
+        label: "piorando",
+        message: "Seu padrão está piorando",
+        accent: "text-red-400",
+      }
+    : {
+        label: "melhorando",
+        message: "Seu padrão está melhorando",
+        accent: "text-green-400",
+      };
+  const daysUntilDepleted = netDailyAverage < 0
+    ? Math.max(0, Math.ceil(balance / Math.abs(netDailyAverage)))
+    : null;
+
+  const behaviorStatus = despesas > receitas && projectedBalance < 0
+    ? {
+        key: "critico",
+        title: "Crítico",
+        message: "você está gastando mais do que ganha e ficará negativo",
+        accent: "text-red-400",
+        border: "rgba(239,68,68,0.45)",
+        icon: "text-red-400",
+      }
+    : despesas > receitas
+      ? {
+          key: "alerta",
+          title: "Alerta",
+          message: "você está gastando mais do que ganha",
+          accent: "text-yellow-400",
+          border: "rgba(234,179,8,0.45)",
+          icon: "text-yellow-400",
+        }
+      : {
+          key: "controlado",
+          title: "Controlado",
+          message: "você está dentro do controle",
+          accent: "text-green-400",
+          border: "rgba(34,197,94,0.45)",
+          icon: "text-green-400",
+        };
+
   const recommendations: string[] = [];
 
   if (projectedBalance < 0) {
     recommendations.push("Você vai ficar negativo. Reduza gastos ou aumente receitas.");
-  }
-  if (despesas > receitas) {
+  } else if (despesas > receitas) {
     recommendations.push("Você está gastando mais do que ganha.");
   }
   if (pendingBillsTotal > balance) {
@@ -498,7 +544,6 @@ export default function DashboardPage() {
   const topCategoryPct = topCategory && despesas > 0
     ? Math.round((topCategory.value / despesas) * 100)
     : 0;
-  const hasHighConsumptionBehavior = despesas > receitas;
 
   async function handleDeleteRow() {
     if (!deleteRow) return;
@@ -638,6 +683,41 @@ export default function DashboardPage() {
               </div>
             </div>
           )}
+
+          <div className={`grid gap-3 ${daysUntilDepleted !== null ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+            <div className="glass-card p-4" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowUpRight size={16} className="text-[#818CF8]" />
+                <span className="text-sm font-semibold">Projeção do mês</span>
+              </div>
+              <p className="text-xs text-white/60">Se continuar nesse ritmo:</p>
+              <p className={`text-lg font-bold mt-1 ${monthEndForecast >= 0 ? "text-green-400" : "text-red-400"}`}>
+                Saldo final estimado: {formatCurrency(monthEndForecast)}
+              </p>
+            </div>
+
+            <div className="glass-card p-4" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Calculator size={16} className="text-[#818CF8]" />
+                <span className="text-sm font-semibold">Tendência</span>
+              </div>
+              <p className={`text-base font-semibold ${financialTrend.accent}`}>{financialTrend.message}</p>
+              <p className="text-xs text-white/50 mt-1">Média diária atual: {netDailyAverage >= 0 ? "+" : ""}{formatCurrency(netDailyAverage)}</p>
+            </div>
+
+            {daysUntilDepleted !== null && (
+              <div className="glass-card p-4" style={{ borderColor: "rgba(239,68,68,0.45)" }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={16} className="text-red-400" />
+                  <span className="text-sm font-semibold">Risco futuro</span>
+                </div>
+                <p className="text-xs text-white/60">Mantendo esse ritmo:</p>
+                <p className="text-base font-semibold text-red-400 mt-1">
+                  Seu saldo acaba em {daysUntilDepleted} dia{daysUntilDepleted === 1 ? "" : "s"}
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* ── Summary Cards ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -855,9 +935,9 @@ export default function DashboardPage() {
                 ))}
                 {projection !== null && (
                   <p className="text-xs text-white/70">
-                    Projeção de fim de mês:{" "}
+                    Projeção de gastos no ritmo atual:{" "}
                     <span className="font-bold text-white">{formatCurrency(projection)}</span>
-                    <span className="text-white/40"> (no ritmo atual)</span>
+                    <span className="text-white/40"> no fechamento do mês</span>
                   </p>
                 )}
               </div>
@@ -880,18 +960,24 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {hasHighConsumptionBehavior && (
-            <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(239,68,68,0.45)" }}>
-              <div className="flex items-center gap-2">
-                <AlertTriangle size={16} className="text-red-400" />
-                <span className="text-sm font-semibold">Comportamento financeiro</span>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-red-400">Você está em padrão de prejuízo.</p>
-                <p className="text-xs text-white/60">Se continuar assim, seu saldo vai diminuir.</p>
-              </div>
+          <div className="glass-card p-4 space-y-2" style={{ borderColor: behaviorStatus.border }}>
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} className={behaviorStatus.icon} />
+              <span className="text-sm font-semibold">Comportamento financeiro</span>
             </div>
-          )}
+            <div className="space-y-1">
+              <p className={`text-sm font-semibold ${behaviorStatus.accent}`}>
+                {behaviorStatus.title}: {behaviorStatus.message}
+              </p>
+              <p className="text-xs text-white/60">
+                {behaviorStatus.key === "critico"
+                  ? "Se continuar assim, seu saldo vai diminuir e pode ficar negativo."
+                  : behaviorStatus.key === "alerta"
+                    ? "Seu resultado mensal exige atenção antes de virar falta de caixa."
+                    : "Seu padrão atual está estável dentro do controle."}
+              </p>
+            </div>
+          </div>
 
           {/* Card total highlight */}
           {cardTotal > 0 && (
