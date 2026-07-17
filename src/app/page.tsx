@@ -660,11 +660,11 @@ export default function DashboardPage() {
   }
 
   return (
-    <AppShell contentClassName="lg:max-w-6xl xl:max-w-[1500px] 2xl:max-w-[1600px]">
+    <AppShell contentClassName="lg:max-w-[1400px] xl:max-w-[1500px] 2xl:max-w-[1600px]">
       {loading ? (
         <DashboardSkeleton />
       ) : (
-        <div className="space-y-5 lg:space-y-6">
+        <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="glass-card p-4" style={{ borderColor: financialStatus.border }}>
               <div className="flex items-start justify-between gap-3">
@@ -766,7 +766,7 @@ export default function DashboardPage() {
               icon={<FileText size={16} />}
               color="text-yellow-400"
             />
-            <div className="glass-card p-3 md:p-4">
+            <div className="glass-card p-4">
               <div className="flex items-center justify-between mb-1">
                 <span className="label-upper">Saldo Previsto</span>
                 <span className="text-white/45"><Calculator size={16} /></span>
@@ -798,393 +798,404 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="space-y-5 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)] lg:gap-5 lg:items-start">
-          {/* ── Agenda da Semana ── */}
-          <div className="glass-card p-4 lg:col-start-1">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-sm font-semibold">Agenda da Semana</h2>
-                <p className="text-[10px] text-white/30 mt-0.5">Compromissos próximos da Agenda Financeira.</p>
-              </div>
-              <Link href="/bills" className="text-[10px] text-[#6366F1] hover:underline">
-                Ver Agenda Completa
-              </Link>
-            </div>
+          <div className="lg:grid lg:grid-cols-3 lg:gap-4 lg:items-start space-y-4 lg:space-y-0">
+            <div className="lg:col-span-2 space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {/* ── Agenda da Semana ── */}
+                <div className="glass-card p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h2 className="text-sm font-semibold">Agenda da Semana</h2>
+                      <p className="text-[10px] text-white/30 mt-0.5">Compromissos próximos da Agenda Financeira.</p>
+                    </div>
+                    <Link href="/bills" className="text-[10px] text-[#6366F1] hover:underline">
+                      Ver Agenda Completa
+                    </Link>
+                  </div>
 
-            <div className="space-y-4">
-              {upcomingAgendaSections.map((section) => (
-                <div key={section.key}>
-                  {(() => {
-                    const sectionImpact = section.items.reduce((total, bill) => (
-                      total + (bill.type === "receivable" ? bill.amount : -bill.amount)
-                    ), 0);
-                    return (
-                      <>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-white/45">{section.title}</h3>
-                    <div className="text-right">
-                      {section.items.length > 0 && (
-                        <span className="block text-[10px] text-white/30">{section.items.length} item(ns)</span>
-                      )}
-                      {section.items.length > 0 && (
-                        <span className={`block text-[10px] mt-0.5 ${
-                          sectionImpact > 0 ? "text-green-400" : sectionImpact < 0 ? "text-red-400" : "text-white/30"
-                        }`}>
-                          Impacto no saldo: {sectionImpact > 0 ? "+" : ""}{formatCurrency(sectionImpact)}
-                        </span>
-                      )}
+                  <div className="space-y-4">
+                    {upcomingAgendaSections.map((section) => (
+                      <div key={section.key}>
+                        {(() => {
+                          const sectionImpact = section.items.reduce((total, bill) => (
+                            total + (bill.type === "receivable" ? bill.amount : -bill.amount)
+                          ), 0);
+                          return (
+                            <>
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-xs font-semibold uppercase tracking-wider text-white/45">{section.title}</h3>
+                                <div className="text-right">
+                                  {section.items.length > 0 && (
+                                    <span className="block text-[10px] text-white/30">{section.items.length} item(ns)</span>
+                                  )}
+                                  {section.items.length > 0 && (
+                                    <span className={`block text-[10px] mt-0.5 ${
+                                      sectionImpact > 0 ? "text-green-400" : sectionImpact < 0 ? "text-red-400" : "text-white/30"
+                                    }`}>
+                                      Impacto no saldo: {sectionImpact > 0 ? "+" : ""}{formatCurrency(sectionImpact)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {section.items.length === 0 ? (
+                                <p className="text-xs text-white/25">Nenhum compromisso.</p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {section.items.map((bill) => (
+                                    <div key={bill.id} className="flex items-center justify-between py-2 glass-divider last:border-0">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          {bill.notes?.startsWith("card:") && <CreditCard size={11} className="text-[#6366F1] flex-shrink-0" />}
+                                          <p className="text-xs font-medium truncate">{bill.description}</p>
+                                          <span className={`px-1.5 py-0.5 rounded-md text-[10px] uppercase tracking-wider ${
+                                            bill.type === "receivable"
+                                              ? "bg-green-500/10 text-green-400"
+                                              : "bg-yellow-500/10 text-yellow-400"
+                                          }`}>
+                                            {bill.type === "receivable" ? "A receber" : "A pagar"}
+                                          </span>
+                                        </div>
+                                        <p className="text-[10px] text-white/30">{formatDate(bill.due_date)}</p>
+                                      </div>
+                                      <span className={`text-xs font-bold flex-shrink-0 ml-3 ${
+                                        bill.type === "receivable" ? "text-green-400" : "text-yellow-400"
+                                      }`}>
+                                        {bill.type === "receivable" ? "+" : "-"}{formatCurrency(bill.amount)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="glass-card p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Calculator size={16} className="text-[#818CF8]" />
+                    <div>
+                      <h2 className="text-sm font-semibold">Próximos 7 dias</h2>
+                      <p className="text-[10px] text-white/30 mt-0.5">Impacto de curto prazo com base na agenda já carregada.</p>
                     </div>
                   </div>
-                  {section.items.length === 0 ? (
-                    <p className="text-xs text-white/25">Nenhum compromisso.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {section.items.map((bill) => (
-                        <div key={bill.id} className="flex items-center justify-between py-2 glass-divider last:border-0">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {bill.notes?.startsWith("card:") && <CreditCard size={11} className="text-[#6366F1] flex-shrink-0" />}
-                              <p className="text-xs font-medium truncate">{bill.description}</p>
-                              <span className={`px-1.5 py-0.5 rounded-md text-[10px] uppercase tracking-wider ${
-                                bill.type === "receivable"
-                                  ? "bg-green-500/10 text-green-400"
-                                  : "bg-yellow-500/10 text-yellow-400"
-                              }`}>
-                                {bill.type === "receivable" ? "A receber" : "A pagar"}
-                              </span>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="glass-card p-3">
+                      <p className="label-upper mb-1">Entradas</p>
+                      <p className="text-sm font-bold text-green-400">{formatCurrency(next7DaysEntries)}</p>
+                    </div>
+                    <div className="glass-card p-3">
+                      <p className="label-upper mb-1">Saídas</p>
+                      <p className="text-sm font-bold text-red-400">{formatCurrency(next7DaysExpenses)}</p>
+                    </div>
+                    <div className="glass-card p-3">
+                      <p className="label-upper mb-1">Impacto</p>
+                      <p className={`text-sm font-bold ${
+                        next7DaysImpact > 0 ? "text-green-400" : next7DaysImpact < 0 ? "text-red-400" : "text-white"
+                      }`}>
+                        {next7DaysImpact > 0 ? "+" : ""}{formatCurrency(next7DaysImpact)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {(generalCategoryData.length > 0 || insights.length > 0 || projection !== null || topCategory) && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {/* Gráfico: Categorias do Cartão */}
+                  {generalCategoryData.length > 0 && (
+                    <div className="glass-divider pb-4">
+                      <h2 className="label-upper mb-3">Categorias do Mês</h2>
+                      <div className="flex flex-col sm:flex-row items-center gap-4">
+                        <ResponsiveContainer width="100%" height={200} className="sm:!w-1/2">
+                          <PieChart>
+                            <Pie data={generalCategoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={75}
+                              dataKey="value" stroke="none">
+                              {generalCategoryData.map((entry, i) => (<Cell key={i} fill={entry.color} />))}
+                            </Pie>
+                            <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={tooltipStyle} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="w-full sm:flex-1 space-y-2">
+                          {generalCategoryData.map((item, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                                <span className="text-white/60 text-xs">{item.name}</span>
+                              </div>
+                              <span className="text-white/45 text-xs">{formatCurrency(item.value)}</span>
                             </div>
-                            <p className="text-[10px] text-white/30">{formatDate(bill.due_date)}</p>
-                          </div>
-                          <span className={`text-xs font-bold flex-shrink-0 ml-3 ${
-                            bill.type === "receivable" ? "text-green-400" : "text-yellow-400"
-                          }`}>
-                            {bill.type === "receivable" ? "+" : "-"}{formatCurrency(bill.amount)}
-                          </span>
+                          ))}
                         </div>
-                      ))}
+                      </div>
                     </div>
                   )}
-                      </>
-                    );
-                  })()}
+
+                  <div className="space-y-4">
+                    {/* ── Insights + Projecao ── */}
+                    {(insights.length > 0 || projection !== null) && (
+                      <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+                        <div className="flex items-center gap-2">
+                          <Lightbulb size={16} className="text-[#818CF8]" />
+                          <span className="text-sm font-semibold">Insights</span>
+                        </div>
+                        <div className="space-y-1">
+                          {insights.map((s, i) => (
+                            <p key={i} className="text-xs text-white/70">{s}</p>
+                          ))}
+                          {projection !== null && (
+                            <p className="text-xs text-white/70">
+                              Projeção de gastos no ritmo atual:{" "}
+                              <span className="font-bold text-white">{formatCurrency(projection)}</span>
+                              <span className="text-white/40"> no fechamento do mês</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {topCategory && (
+                      <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
+                        <div className="flex items-center gap-2">
+                          <Calculator size={16} className="text-[#818CF8]" />
+                          <span className="text-sm font-semibold">Maior gasto</span>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-white/70">Você está gastando principalmente com:</p>
+                          <p className="text-sm font-semibold text-white">
+                            {topCategory.name} <span className="text-white/40">({topCategoryPct}%)</span>
+                          </p>
+                          <p className="text-xs text-white/50">Sugestão: Revise essa categoria.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
 
-          <div className="glass-card p-4 lg:col-start-1">
-            <div className="flex items-center gap-2 mb-3">
-              <Calculator size={16} className="text-[#818CF8]" />
-              <div>
-                <h2 className="text-sm font-semibold">Próximos 7 dias</h2>
-                <p className="text-[10px] text-white/30 mt-0.5">Impacto de curto prazo com base na agenda já carregada.</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="glass-card p-3">
-                <p className="label-upper mb-1">Entradas</p>
-                <p className="text-sm font-bold text-green-400">{formatCurrency(next7DaysEntries)}</p>
-              </div>
-              <div className="glass-card p-3">
-                <p className="label-upper mb-1">Saídas</p>
-                <p className="text-sm font-bold text-red-400">{formatCurrency(next7DaysExpenses)}</p>
-              </div>
-              <div className="glass-card p-3">
-                <p className="label-upper mb-1">Impacto</p>
-                <p className={`text-sm font-bold ${
-                  next7DaysImpact > 0 ? "text-green-400" : next7DaysImpact < 0 ? "text-red-400" : "text-white"
-                }`}>
-                  {next7DaysImpact > 0 ? "+" : ""}{formatCurrency(next7DaysImpact)}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Receitas + Despesas com variacao ── */}
-          <div className="grid grid-cols-2 gap-3 lg:col-start-2">
-            {(() => {
-              const recVar = prevReceitas === 0
-                ? (receitas > 0 ? { value: "+100%", positive: true } : { value: "—", positive: true })
-                : (() => {
-                    const pct = ((receitas - prevReceitas) / Math.abs(prevReceitas)) * 100;
-                    return { value: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`, positive: pct >= 0 };
-                  })();
-              const desVar = prevDespesas === 0
-                ? (despesas > 0 ? { value: "+100%", positive: false } : { value: "—", positive: true })
-                : (() => {
-                    const pct = ((despesas - prevDespesas) / Math.abs(prevDespesas)) * 100;
-                    // Lower is better for despesas
-                    return { value: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`, positive: pct < 0 };
-                  })();
-              return (
-                <>
-                  <div className="glass-card p-4">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <ArrowUpRight size={12} className="text-green-400" />
-                      <p className="label-upper">Receitas</p>
+              {/* Alertas */}
+              {!alerts.loading && (alerts.overdue.length > 0 || alerts.today.length > 0 || alerts.tomorrow.length > 0) && (
+                <Link href="/bills" className="block">
+                  <div className="glass-card p-4 space-y-2" style={{ borderColor: alerts.overdue.length > 0 ? "rgba(239,68,68,0.5)" : "rgba(234,179,8,0.5)" }}>
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle size={16} className={alerts.overdue.length > 0 ? "text-red-400" : "text-yellow-400"} />
+                      <span className="text-sm font-semibold">
+                        {alerts.overdue.length + alerts.today.length + alerts.tomorrow.length} conta(s) precisam de atencao
+                      </span>
                     </div>
-                    <p className="text-lg font-bold text-green-400">{formatCurrency(receitas)}</p>
-                    <p className={`text-[10px] mt-1 ${recVar.positive ? "text-green-400" : "text-red-400"}`}>
-                      {recVar.value} <span className="text-white/30">vs mês anterior</span>
-                    </p>
-                    <p className={`text-[11px] mt-2 font-medium ${monthlyResult >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      Resultado do mês: {monthlyResult >= 0 ? "+" : "-"}{formatCurrency(Math.abs(monthlyResult))}
-                      <span className="text-white/30"> · {monthlyResult >= 0 ? "lucro" : "prejuízo"}</span>
-                    </p>
-                  </div>
-                  <div className="glass-card p-4">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <ArrowDownRight size={12} className="text-red-400" />
-                      <p className="label-upper">Despesas</p>
+                    <div className="space-y-1">
+                      {alerts.overdue.map((b) => (
+                        <p key={b.id} className="text-xs text-red-400">Atrasada: {b.description} — {formatCurrency(b.amount)}</p>
+                      ))}
+                      {alerts.today.map((b) => (
+                        <p key={b.id} className="text-xs text-yellow-400">Vence hoje: {b.description} — {formatCurrency(b.amount)}</p>
+                      ))}
+                      {alerts.tomorrow.map((b) => (
+                        <p key={b.id} className="text-xs text-orange-400">Vence amanha: {b.description} — {formatCurrency(b.amount)}</p>
+                      ))}
                     </div>
-                    <p className="text-lg font-bold text-red-400">{formatCurrency(despesas)}</p>
-                    <p className={`text-[10px] mt-1 ${desVar.positive ? "text-green-400" : "text-red-400"}`}>
-                      {desVar.value} <span className="text-white/30">vs mês anterior</span>
-                    </p>
                   </div>
-                </>
-              );
-            })()}
-          </div>
+                </Link>
+              )}
+            </div>
 
-          {/* ── Insights + Projecao ── */}
-          {(insights.length > 0 || projection !== null) && (
-            <div className="glass-card p-4 space-y-2 lg:col-start-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
-              <div className="flex items-center gap-2">
-                <Lightbulb size={16} className="text-[#818CF8]" />
-                <span className="text-sm font-semibold">Insights</span>
+            <div className="lg:col-span-1 space-y-4">
+              {/* ── Receitas + Despesas com variacao ── */}
+              <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+                {(() => {
+                  const recVar = prevReceitas === 0
+                    ? (receitas > 0 ? { value: "+100%", positive: true } : { value: "—", positive: true })
+                    : (() => {
+                        const pct = ((receitas - prevReceitas) / Math.abs(prevReceitas)) * 100;
+                        return { value: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`, positive: pct >= 0 };
+                      })();
+                  const desVar = prevDespesas === 0
+                    ? (despesas > 0 ? { value: "+100%", positive: false } : { value: "—", positive: true })
+                    : (() => {
+                        const pct = ((despesas - prevDespesas) / Math.abs(prevDespesas)) * 100;
+                        return { value: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`, positive: pct < 0 };
+                      })();
+                  return (
+                    <>
+                      <div className="glass-card p-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <ArrowUpRight size={12} className="text-green-400" />
+                          <p className="label-upper">Receitas</p>
+                        </div>
+                        <p className="text-lg font-bold text-green-400">{formatCurrency(receitas)}</p>
+                        <p className={`text-[10px] mt-1 ${recVar.positive ? "text-green-400" : "text-red-400"}`}>
+                          {recVar.value} <span className="text-white/30">vs mês anterior</span>
+                        </p>
+                        <p className={`text-[11px] mt-2 font-medium ${monthlyResult >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          Resultado do mês: {monthlyResult >= 0 ? "+" : "-"}{formatCurrency(Math.abs(monthlyResult))}
+                          <span className="text-white/30"> · {monthlyResult >= 0 ? "lucro" : "prejuízo"}</span>
+                        </p>
+                      </div>
+                      <div className="glass-card p-4">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <ArrowDownRight size={12} className="text-red-400" />
+                          <p className="label-upper">Despesas</p>
+                        </div>
+                        <p className="text-lg font-bold text-red-400">{formatCurrency(despesas)}</p>
+                        <p className={`text-[10px] mt-1 ${desVar.positive ? "text-green-400" : "text-red-400"}`}>
+                          {desVar.value} <span className="text-white/30">vs mês anterior</span>
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
-              <div className="space-y-1">
-                {insights.map((s, i) => (
-                  <p key={i} className="text-xs text-white/70">{s}</p>
-                ))}
-                {projection !== null && (
-                  <p className="text-xs text-white/70">
-                    Projeção de gastos no ritmo atual:{" "}
-                    <span className="font-bold text-white">{formatCurrency(projection)}</span>
-                    <span className="text-white/40"> no fechamento do mês</span>
+
+              <div className="glass-card p-4 space-y-2" style={{ borderColor: behaviorStatus.border }}>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={16} className={behaviorStatus.icon} />
+                  <span className="text-sm font-semibold">Comportamento financeiro</span>
+                </div>
+                <div className="space-y-1">
+                  <p className={`text-sm font-semibold ${behaviorStatus.accent}`}>
+                    {behaviorStatus.title}: {behaviorStatus.message}
                   </p>
+                  <p className="text-xs text-white/60">
+                    {behaviorStatus.key === "critico"
+                      ? "Se continuar assim, seu saldo vai diminuir e pode ficar negativo."
+                      : behaviorStatus.key === "alerta"
+                        ? "Seu resultado mensal exige atenção antes de virar falta de caixa."
+                        : "Seu padrão atual está estável dentro do controle."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Card total highlight */}
+              {cardTotal > 0 && (
+                <Link href="/credit-cards" className="block">
+                  <div className="glass-card p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CreditCard size={18} className="text-[#6366F1]" />
+                      <div>
+                        <p className="text-sm font-medium">Faturas de cartao</p>
+                        <p className="text-[11px] text-white/40">Total do mes nos cartoes</p>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-[#6366F1]">{formatCurrency(cardTotal)}</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Goal Alerts */}
+              {goalProgress.filter((g) => g.pct >= 80).length > 0 && (
+                <Link href="/goals" className="block">
+                  <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(234,179,8,0.5)" }}>
+                    <div className="flex items-center gap-2">
+                      <Target size={16} className="text-yellow-400" />
+                      <span className="text-sm font-semibold">Metas em alerta</span>
+                    </div>
+                    <div className="space-y-1">
+                      {goalProgress.filter((g) => g.pct >= 80).map((g) => (
+                        <p key={g.category} className={`text-xs ${g.pct >= 100 ? "text-red-400" : "text-yellow-400"}`}>
+                          {g.label}: {g.pct}% do limite atingido ({formatCurrency(g.spent)} / {formatCurrency(g.limit)})
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </Link>
+              )}
+
+              {/* Goals Widget - Top 3 */}
+              {goalProgress.length > 0 && (
+                <div className="glass-divider pb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="label-upper">Metas do Mes</h2>
+                    <Link href="/goals" className="text-[10px] text-[#6366F1] hover:underline">Ver todas</Link>
+                  </div>
+                  <div className="space-y-3">
+                    {goalProgress.slice(0, 3).map((g) => {
+                      const barWidth = Math.min(g.pct, 100);
+                      const barColor = g.pct > 100 ? "bg-red-500" : g.pct >= 70 ? "bg-yellow-500" : "bg-green-500";
+                      const textColor = g.pct > 100 ? "text-red-400" : g.pct >= 70 ? "text-yellow-400" : "text-green-400";
+                      return (
+                        <div key={g.category} className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-white/60">{g.label}</span>
+                            <span className={`text-xs font-bold ${textColor}`}>{g.pct}%</span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-white/10">
+                            <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${barWidth}%` }} />
+                          </div>
+                          <p className="text-[10px] text-white/30">{formatCurrency(g.spent)} / {formatCurrency(g.limit)}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Ultimas Transacoes */}
+              <div className="glass-divider pt-4">
+                <h2 className="label-upper mb-3">Ultimas Transacoes</h2>
+                {recentTx.length === 0 ? (
+                  <p className="text-white/30 text-sm">Nenhuma transacao encontrada.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentTx.map((t) => {
+                      const cat = getCategoryConfig(t.category);
+                      const Icon = cat.icon;
+                      const isIncome = t.type === "income";
+                      return (
+                        <div key={t.id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                              style={{ backgroundColor: cat.color + "20" }}>
+                              <Icon size={16} style={{ color: cat.color }} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {t.description}
+                                {t.installmentLabel && (
+                                  <span className="text-white/40 ml-1 text-xs">{t.installmentLabel}</span>
+                                )}
+                              </p>
+                              <p className="text-xs text-white/30 flex items-center gap-1.5 flex-wrap">
+                                <span>{formatDate(t.date)}</span>
+                                {t.source === "card" && t.cardName && (
+                                  <>
+                                    <span>·</span>
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium"
+                                      style={{
+                                        backgroundColor: (t.cardColor || "#6366F1") + "30",
+                                        color: t.cardColor || "#6366F1",
+                                      }}
+                                    >
+                                      <CreditCard size={10} /> {t.cardName}
+                                    </span>
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                            <span className={`text-sm font-bold ${isIncome ? "text-green-400" : "text-red-400"}`}>
+                              {isIncome ? "+" : "-"}{formatCurrency(t.amount)}
+                            </span>
+                            <button
+                              onClick={() => { setDeleteRow(t); setDeleteAllInst(false); }}
+                              className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                              title="Excluir"
+                              aria-label="Excluir"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>
-          )}
-
-          {topCategory && (
-            <div className="glass-card p-4 space-y-2 lg:col-start-2" style={{ borderColor: "rgba(99,102,241,0.4)" }}>
-              <div className="flex items-center gap-2">
-                <Calculator size={16} className="text-[#818CF8]" />
-                <span className="text-sm font-semibold">Maior gasto</span>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-white/70">Você está gastando principalmente com:</p>
-                <p className="text-sm font-semibold text-white">
-                  {topCategory.name} <span className="text-white/40">({topCategoryPct}%)</span>
-                </p>
-                <p className="text-xs text-white/50">Sugestão: Revise essa categoria.</p>
-              </div>
-            </div>
-          )}
-
-          <div className="glass-card p-4 space-y-2 lg:col-start-2" style={{ borderColor: behaviorStatus.border }}>
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={16} className={behaviorStatus.icon} />
-              <span className="text-sm font-semibold">Comportamento financeiro</span>
-            </div>
-            <div className="space-y-1">
-              <p className={`text-sm font-semibold ${behaviorStatus.accent}`}>
-                {behaviorStatus.title}: {behaviorStatus.message}
-              </p>
-              <p className="text-xs text-white/60">
-                {behaviorStatus.key === "critico"
-                  ? "Se continuar assim, seu saldo vai diminuir e pode ficar negativo."
-                  : behaviorStatus.key === "alerta"
-                    ? "Seu resultado mensal exige atenção antes de virar falta de caixa."
-                    : "Seu padrão atual está estável dentro do controle."}
-              </p>
-            </div>
-          </div>
-
-          {/* Card total highlight */}
-          {cardTotal > 0 && (
-            <Link href="/credit-cards" className="block lg:col-start-2">
-              <div className="glass-card p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CreditCard size={18} className="text-[#6366F1]" />
-                  <div>
-                    <p className="text-sm font-medium">Faturas de cartao</p>
-                    <p className="text-[11px] text-white/40">Total do mes nos cartoes</p>
-                  </div>
-                </div>
-                <span className="text-lg font-bold text-[#6366F1]">{formatCurrency(cardTotal)}</span>
-              </div>
-            </Link>
-          )}
-
-          {/* Gráfico: Categorias do Cartão */}
-          {generalCategoryData.length > 0 && (
-            <div className="glass-divider pb-5 lg:col-start-1">
-              <h2 className="label-upper mb-3">Categorias do Mês</h2>
-              <div className="flex flex-col sm:flex-row items-center gap-4">
-                <ResponsiveContainer width="100%" height={200} className="sm:!w-1/2">
-                  <PieChart>
-                    <Pie data={generalCategoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={75}
-                      dataKey="value" stroke="none">
-                      {generalCategoryData.map((entry, i) => (<Cell key={i} fill={entry.color} />))}
-                    </Pie>
-                    <Tooltip formatter={(value) => formatCurrency(Number(value))} contentStyle={tooltipStyle} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="w-full sm:flex-1 space-y-2">
-                  {generalCategoryData.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
-                        <span className="text-white/60 text-xs">{item.name}</span>
-                      </div>
-                      <span className="text-white/45 text-xs">{formatCurrency(item.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Alertas */}
-          {!alerts.loading && (alerts.overdue.length > 0 || alerts.today.length > 0 || alerts.tomorrow.length > 0) && (
-            <Link href="/bills" className="block lg:col-start-1">
-              <div className="glass-card p-4 space-y-2" style={{ borderColor: alerts.overdue.length > 0 ? "rgba(239,68,68,0.5)" : "rgba(234,179,8,0.5)" }}>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle size={16} className={alerts.overdue.length > 0 ? "text-red-400" : "text-yellow-400"} />
-                  <span className="text-sm font-semibold">
-                    {alerts.overdue.length + alerts.today.length + alerts.tomorrow.length} conta(s) precisam de atencao
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  {alerts.overdue.map((b) => (
-                    <p key={b.id} className="text-xs text-red-400">Atrasada: {b.description} — {formatCurrency(b.amount)}</p>
-                  ))}
-                  {alerts.today.map((b) => (
-                    <p key={b.id} className="text-xs text-yellow-400">Vence hoje: {b.description} — {formatCurrency(b.amount)}</p>
-                  ))}
-                  {alerts.tomorrow.map((b) => (
-                    <p key={b.id} className="text-xs text-orange-400">Vence amanha: {b.description} — {formatCurrency(b.amount)}</p>
-                  ))}
-                </div>
-              </div>
-            </Link>
-          )}
-
-          {/* Goal Alerts */}
-          {goalProgress.filter((g) => g.pct >= 80).length > 0 && (
-            <Link href="/goals" className="block lg:col-start-2">
-              <div className="glass-card p-4 space-y-2" style={{ borderColor: "rgba(234,179,8,0.5)" }}>
-                <div className="flex items-center gap-2">
-                  <Target size={16} className="text-yellow-400" />
-                  <span className="text-sm font-semibold">Metas em alerta</span>
-                </div>
-                <div className="space-y-1">
-                  {goalProgress.filter((g) => g.pct >= 80).map((g) => (
-                    <p key={g.category} className={`text-xs ${g.pct >= 100 ? "text-red-400" : "text-yellow-400"}`}>
-                      {g.label}: {g.pct}% do limite atingido ({formatCurrency(g.spent)} / {formatCurrency(g.limit)})
-                    </p>
-                  ))}
-                </div>
-              </div>
-            </Link>
-          )}
-
-          {/* Goals Widget - Top 3 */}
-          {goalProgress.length > 0 && (
-            <div className="glass-divider pb-4 lg:col-start-2">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="label-upper">Metas do Mes</h2>
-                <Link href="/goals" className="text-[10px] text-[#6366F1] hover:underline">Ver todas</Link>
-              </div>
-              <div className="space-y-3">
-                {goalProgress.slice(0, 3).map((g) => {
-                  const barWidth = Math.min(g.pct, 100);
-                  const barColor = g.pct > 100 ? "bg-red-500" : g.pct >= 70 ? "bg-yellow-500" : "bg-green-500";
-                  const textColor = g.pct > 100 ? "text-red-400" : g.pct >= 70 ? "text-yellow-400" : "text-green-400";
-                  return (
-                    <div key={g.category} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-white/60">{g.label}</span>
-                        <span className={`text-xs font-bold ${textColor}`}>{g.pct}%</span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-white/10">
-                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${barWidth}%` }} />
-                      </div>
-                      <p className="text-[10px] text-white/30">{formatCurrency(g.spent)} / {formatCurrency(g.limit)}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Ultimas Transacoes */}
-          <div className="glass-divider pt-4 lg:col-start-2">
-            <h2 className="label-upper mb-3">Ultimas Transacoes</h2>
-            {recentTx.length === 0 ? (
-              <p className="text-white/30 text-sm">Nenhuma transacao encontrada.</p>
-            ) : (
-              <div className="space-y-3">
-                {recentTx.map((t) => {
-                  const cat = getCategoryConfig(t.category);
-                  const Icon = cat.icon;
-                  const isIncome = t.type === "income";
-                  return (
-                    <div key={t.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: cat.color + "20" }}>
-                          <Icon size={16} style={{ color: cat.color }} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {t.description}
-                            {t.installmentLabel && (
-                              <span className="text-white/40 ml-1 text-xs">{t.installmentLabel}</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-white/30 flex items-center gap-1.5 flex-wrap">
-                            <span>{formatDate(t.date)}</span>
-                            {t.source === "card" && t.cardName && (
-                              <>
-                                <span>·</span>
-                                <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium"
-                                  style={{
-                                    backgroundColor: (t.cardColor || "#6366F1") + "30",
-                                    color: t.cardColor || "#6366F1",
-                                  }}
-                                >
-                                  <CreditCard size={10} /> {t.cardName}
-                                </span>
-                              </>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
-                        <span className={`text-sm font-bold ${isIncome ? "text-green-400" : "text-red-400"}`}>
-                          {isIncome ? "+" : "-"}{formatCurrency(t.amount)}
-                        </span>
-                        <button
-                          onClick={() => { setDeleteRow(t); setDeleteAllInst(false); }}
-                          className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                          title="Excluir"
-                          aria-label="Excluir"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
           </div>
         </div>
       )}
