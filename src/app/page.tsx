@@ -355,6 +355,9 @@ export default function DashboardPage() {
       const pct = des > 0 ? Math.round((topCat.value / des) * 100) : 0;
       insightList.push(`Sua maior categoria este mês é ${topCat.name} (${pct}% das despesas)`);
     }
+    if (des > rec) {
+      insightList.push("Você está gastando mais do que ganha");
+    }
     setInsights(insightList);
 
     // === Projecao de fim de mes ===
@@ -415,6 +418,35 @@ export default function DashboardPage() {
     background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)",
     border: "1px solid rgba(255,255,255,0.15)", borderRadius: "12px", color: "#fff",
   };
+
+  const financialStatus = projectedBalance < 0
+    ? {
+        key: "critico",
+        title: "Status financeiro crítico",
+        message: "Você ficará negativo após pagar suas contas",
+        accent: "text-red-400",
+        border: "rgba(239,68,68,0.45)",
+        badge: "bg-red-500/10 text-red-400",
+      }
+    : projectedBalance < 200
+      ? {
+          key: "alerta",
+          title: "Status financeiro em alerta",
+          message: "Seu saldo ficará baixo",
+          accent: "text-yellow-400",
+          border: "rgba(234,179,8,0.45)",
+          badge: "bg-yellow-500/10 text-yellow-400",
+        }
+      : {
+          key: "saudavel",
+          title: "Status financeiro saudável",
+          message: "Situação financeira saudável",
+          accent: "text-green-400",
+          border: "rgba(34,197,94,0.45)",
+          badge: "bg-green-500/10 text-green-400",
+        };
+
+  const monthlyResult = receitas - despesas;
 
   async function handleDeleteRow() {
     if (!deleteRow) return;
@@ -513,6 +545,19 @@ export default function DashboardPage() {
         <DashboardSkeleton />
       ) : (
         <div className="space-y-5">
+          <div className="glass-card p-4" style={{ borderColor: financialStatus.border }}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="label-upper mb-1">Status Financeiro</p>
+                <h2 className={`text-base font-semibold ${financialStatus.accent}`}>{financialStatus.title}</h2>
+                <p className="text-xs text-white/60 mt-1">{financialStatus.message}</p>
+              </div>
+              <span className={`px-2 py-1 rounded-md text-[10px] uppercase tracking-wider ${financialStatus.badge}`}>
+                {financialStatus.key}
+              </span>
+            </div>
+          </div>
+
           {/* ── Summary Cards ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card
@@ -536,13 +581,36 @@ export default function DashboardPage() {
               icon={<FileText size={16} />}
               color="text-yellow-400"
             />
-            <Card
-              title="Saldo Previsto"
-              value={formatCurrency(projectedBalance)}
-              subtitle="Saldo atual + a receber - a pagar"
-              icon={<Calculator size={16} />}
-              color={projectedBalance >= 0 ? "text-green-400" : "text-red-400"}
-            />
+            <div className="glass-card p-3 md:p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="label-upper">Saldo Previsto</span>
+                <span className="text-white/45"><Calculator size={16} /></span>
+              </div>
+              <p className={`value-large text-lg md:text-2xl ${projectedBalance >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {formatCurrency(projectedBalance)}
+              </p>
+              <p className="text-xs text-white/30 mt-1">Saldo atual + a receber - a pagar</p>
+              <div className="mt-3 pt-3 border-t border-white/10 space-y-1 text-[10px] text-white/50">
+                <div className="flex items-center justify-between">
+                  <span>Saldo atual</span>
+                  <span className="text-white/70">{formatCurrency(balance)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>+ A receber</span>
+                  <span className="text-green-400">{formatCurrency(receivableBillsTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>- A pagar</span>
+                  <span className="text-yellow-400">{formatCurrency(pendingBillsTotal)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 text-white/80">
+                  <span>= Saldo final</span>
+                  <span className={projectedBalance >= 0 ? "text-green-400" : "text-red-400"}>
+                    {formatCurrency(projectedBalance)}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ── Agenda da Semana ── */}
@@ -560,11 +628,26 @@ export default function DashboardPage() {
             <div className="space-y-4">
               {upcomingAgendaSections.map((section) => (
                 <div key={section.key}>
+                  {(() => {
+                    const sectionImpact = section.items.reduce((total, bill) => (
+                      total + (bill.type === "receivable" ? bill.amount : -bill.amount)
+                    ), 0);
+                    return (
+                      <>
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-white/45">{section.title}</h3>
-                    {section.items.length > 0 && (
-                      <span className="text-[10px] text-white/30">{section.items.length} item(ns)</span>
-                    )}
+                    <div className="text-right">
+                      {section.items.length > 0 && (
+                        <span className="block text-[10px] text-white/30">{section.items.length} item(ns)</span>
+                      )}
+                      {section.items.length > 0 && (
+                        <span className={`block text-[10px] mt-0.5 ${
+                          sectionImpact > 0 ? "text-green-400" : sectionImpact < 0 ? "text-red-400" : "text-white/30"
+                        }`}>
+                          Impacto no saldo: {sectionImpact > 0 ? "+" : ""}{formatCurrency(sectionImpact)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {section.items.length === 0 ? (
                     <p className="text-xs text-white/25">Nenhum compromisso.</p>
@@ -595,6 +678,9 @@ export default function DashboardPage() {
                       ))}
                     </div>
                   )}
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -626,6 +712,10 @@ export default function DashboardPage() {
                     <p className="text-lg font-bold text-green-400">{formatCurrency(receitas)}</p>
                     <p className={`text-[10px] mt-1 ${recVar.positive ? "text-green-400" : "text-red-400"}`}>
                       {recVar.value} <span className="text-white/30">vs mês anterior</span>
+                    </p>
+                    <p className={`text-[11px] mt-2 font-medium ${monthlyResult >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      Resultado do mês: {monthlyResult >= 0 ? "+" : "-"}{formatCurrency(Math.abs(monthlyResult))}
+                      <span className="text-white/30"> · {monthlyResult >= 0 ? "lucro" : "prejuízo"}</span>
                     </p>
                   </div>
                   <div className="glass-card p-4">
