@@ -48,3 +48,11 @@ Este projeto e um app financeiro pessoal em Next.js com Supabase, integracao ban
 - revisar impacto em `src/lib/supabase/`
 - confirmar variaveis necessarias em `.env.example`
 - manter mudancas pequenas e localizadas quando possivel
+
+## Contexto transversal do Ecossistema
+
+- FinApp é um sistema de controle financeiro pessoal; seu estado técnico pertence ao FinApp e às suas fontes próprias.
+- Autoridade e coordenação institucional: Fundação Hefestos.
+- Memória e contexto auxiliar: Base IA.
+- Contexto transversal: consultar `REF-ECO-CTX-001 - Referência Transversal Mínima do Ecossistema Hefestos` na Fundação.
+- Hefestos ≠ FinApp. Esta orientação não expõe dados pessoais, financeiros, segredos ou contexto adicional para IA.
