@@ -56,3 +56,13 @@ Este projeto e um app financeiro pessoal em Next.js com Supabase, integracao ban
 - Memória e contexto auxiliar: Base IA.
 - Contexto transversal: consultar `REF-ECO-CTX-001 - Referência Transversal Mínima do Ecossistema Hefestos` na Fundação.
 - Hefestos ≠ FinApp. Esta orientação não expõe dados pessoais, financeiros, segredos ou contexto adicional para IA.
+
+## Comportamento do agente
+
+- respostas curtas e diretas, sem introducao nem resumo final;
+- mostrar somente o que foi alterado, sem repetir codigo que nao mudou;
+- preferir edicoes pontuais a reescrever arquivos inteiros;
+- validar sintaxe antes de reportar como concluido;
+- nunca commitar sem autorizacao explicita;
+- confirmacoes em no maximo duas linhas;
+- em erro, mostrar apenas o erro e a correcao.
