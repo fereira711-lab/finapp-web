@@ -66,3 +66,15 @@ Este projeto e um app financeiro pessoal em Next.js com Supabase, integracao ban
 - nunca commitar sem autorizacao explicita;
 - confirmacoes em no maximo duas linhas;
 - em erro, mostrar apenas o erro e a correcao.
+
+## Encerramento de sessão (aviso)
+
+Este repositório é trabalhado em chats separados do Code, e o comando
+`/encerrar-sessao` **não existe aqui** — só na raiz do ECO
+(`PROJETOS/.claude/commands/`). Ao terminar o trabalho neste repositório,
+abra um chat com a pasta `_base-ia` (ou a raiz `PROJETOS`) e rode
+`/encerrar-sessao`: ele lê o Git de **todos** os repositórios e atualiza
+`_base-ia/09-reuniao/CONTINUIDADE-ATUAL.md`, `LOG-ATUALIZACOES-BASE.md` e
+`HISTORICO-DE-PROJETOS.md`. Sem isso o trabalho daqui fica sem registro —
+já aconteceu por dias em setembro/outubro de 2026 (agente-ml e FleetTrack
+ficaram semanas sem aparecer nos registros).
