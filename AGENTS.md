@@ -69,12 +69,15 @@ Este projeto e um app financeiro pessoal em Next.js com Supabase, integracao ban
 
 ## Encerramento de sessão (aviso)
 
-Este repositório é trabalhado em chats separados do Code, e o comando
-`/encerrar-sessao` **não existe aqui** — só na raiz do ECO
-(`PROJETOS/.claude/commands/`). Ao terminar o trabalho neste repositório,
-abra um chat com a pasta `_base-ia` (ou a raiz `PROJETOS`) e rode
-`/encerrar-sessao`: ele lê o Git de **todos** os repositórios e atualiza
-`_base-ia/09-reuniao/CONTINUIDADE-ATUAL.md`, `LOG-ATUALIZACOES-BASE.md` e
-`HISTORICO-DE-PROJETOS.md`. Sem isso o trabalho daqui fica sem registro —
-já aconteceu por dias em setembro/outubro de 2026 (agente-ml e FleetTrack
-ficaram semanas sem aparecer nos registros).
+Este repositório é trabalhado em chats separados do Code. No **PC do
+trabalho**, `/encerrar-sessao` e `/iniciar-sessao` existem também como
+comandos globais (`C:\Users\USER\.claude\commands\`) e funcionam de
+qualquer pasta, inclusive aqui. Ao terminar o trabalho neste repositório,
+rode `/encerrar-sessao`: ele lê o Git de **todos** os repositórios e
+atualiza `_base-ia/09-reuniao/CONTINUIDADE-ATUAL.md`,
+`LOG-ATUALIZACOES-BASE.md` e `HISTORICO-DE-PROJETOS.md`. Se o comando não
+aparecer (outra máquina, ou chat aberto antes de 2026-10-09), abra um chat
+com a pasta `_base-ia` (ou a raiz `PROJETOS`) e rode lá. Sem isso o
+trabalho daqui fica sem registro — já aconteceu por dias em
+setembro/outubro de 2026 (agente-ml e FleetTrack ficaram semanas sem
+aparecer nos registros).
