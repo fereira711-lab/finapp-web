@@ -173,33 +173,41 @@ export default function WeekTab({
         })
       )}
 
-      {inStock.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <span className="label-upper">Em estoque (ainda não precisa)</span>
-          </div>
-          <div className="glass-card px-4 py-1">
-            {inStock
-              .map((f) => ({ f, st: stockStatus(f, weekStartForStock) }))
-              .sort((a, b) => (a.st.daysLeft ?? 9999) - (b.st.daysLeft ?? 9999))
-              .map(({ f, st }) => (
+      {(() => {
+        const entries = inStock
+          .map((f) => ({ f, st: stockStatus(f, weekStartForStock) }))
+          .sort((a, b) => (a.st.daysLeft ?? 9999) - (b.st.daysLeft ?? 9999));
+        // acaba antes da próxima compra mas não está na lista (ex.: lista criada antes do item/duração)
+        const groups = [
+          { key: "soon", title: "Acabando e fora da lista", warn: true, rows: entries.filter((e) => e.st.due) },
+          { key: "later", title: "Em estoque (ainda não precisa)", warn: false, rows: entries.filter((e) => !e.st.due) },
+        ].filter((g) => g.rows.length > 0);
+        return groups.map((g) => (
+          <div key={g.key}>
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <span className={`label-upper ${g.warn ? "!text-amber-400" : ""}`}>{g.title}</span>
+            </div>
+            <div className="glass-card px-4 py-1">
+              {g.rows.map(({ f, st }) => (
                 <div key={f.id} className="flex items-center gap-3 py-2.5 border-b border-white/[0.08] last:border-0">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm truncate">{f.name}</p>
-                    <p className="text-[11px] text-white/40">
+                    <p className={`text-[11px] ${g.warn ? "text-amber-400/90" : "text-white/40"}`}>
                       {st.runsOut ? `Dura até ${shortDate(st.runsOut)} · ${st.hint?.toLowerCase()}` : st.hint}
                     </p>
                   </div>
                   {!locked && (
-                    <button onClick={() => onAddFromStock(f)} className="glass-btn px-2.5 py-1.5 text-[11px]">
+                    <button onClick={() => onAddFromStock(f)}
+                      className={`px-2.5 py-1.5 text-[11px] ${g.warn ? "glass-btn-active" : "glass-btn"}`}>
                       + Adicionar
                     </button>
                   )}
                 </div>
               ))}
+            </div>
           </div>
-        </div>
-      )}
+        ));
+      })()}
 
       {!locked && (
         <button onClick={() => setShowAdd(true)}
