@@ -69,6 +69,7 @@ export interface Goal {
   user_id: string;
   category: string;
   monthly_limit: number;
+  position: number | null;
   created_at: string;
 }
 

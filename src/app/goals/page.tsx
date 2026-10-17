@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/format";
 import { getCategoryConfig } from "@/lib/categories";
@@ -8,7 +17,7 @@ import { useCategories } from "@/lib/useCategories";
 import type { Goal } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import { ListSkeleton } from "@/components/Skeleton";
-import { Target, Plus, Pencil, Trash2, X } from "lucide-react";
+import { Target, Plus, Pencil, Trash2, X, GripVertical } from "lucide-react";
 
 interface GoalWithSpent extends Goal {
   spent: number;
@@ -17,6 +26,25 @@ interface GoalWithSpent extends Goal {
 const EXPENSE_CATEGORY_NAMES = [
   "alimentacao", "transporte", "lazer", "saude", "moradia", "educacao", "outros",
 ];
+
+function SortableGoal({ id, children }: { id: string; children: (handle: ReactNode) => ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const handle = (
+    <button type="button" {...attributes} {...listeners} aria-label="Arrastar para reordenar"
+      className="p-1 -ml-1 rounded-lg text-white/30 hover:text-white cursor-grab active:cursor-grabbing touch-none">
+      <GripVertical size={16} />
+    </button>
+  );
+  return (
+    <div ref={setNodeRef} className="glass-card p-4 space-y-3"
+      style={{
+        transform: CSS.Transform.toString(transform), transition,
+        position: "relative", zIndex: isDragging ? 10 : undefined, opacity: isDragging ? 0.85 : 1,
+      }}>
+      {children(handle)}
+    </div>
+  );
+}
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<GoalWithSpent[]>([]);
@@ -29,6 +57,10 @@ export default function GoalsPage() {
   const { categories, addCategory } = useCategories();
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Expense categories from dynamic list (exclude salario, investimento)
   const expenseCategories = categories.filter(
@@ -46,7 +78,8 @@ export default function GoalsPage() {
     const endOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
     const [goalsRes, txRes, cardTxRes] = await Promise.all([
-      supabase.from("goals").select("*").eq("user_id", user.id).order("created_at"),
+      supabase.from("goals").select("*").eq("user_id", user.id)
+        .order("position", { ascending: true, nullsFirst: false }).order("created_at"),
       supabase.from("transactions").select("amount, type, category")
         .eq("user_id", user.id).gte("date", startOfMonth).lte("date", endOfMonth),
       supabase.from("card_transactions").select("amount, category")
@@ -133,6 +166,27 @@ export default function GoalsPage() {
     setShowNewCat(false);
   }
 
+  async function handleDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return;
+    const next = arrayMove(
+      goals,
+      goals.findIndex((g) => g.id === active.id),
+      goals.findIndex((g) => g.id === over.id),
+    );
+    setGoals(next);
+
+    // Ordem sincronizada: salva a posicao de cada meta no banco
+    const supabase = createClient();
+    const results = await Promise.all(
+      next.map((g, i) => supabase.from("goals").update({ position: i }).eq("id", g.id))
+    );
+    if (results.some((r) => r.error)) loadGoals();
+  }
+
+  const totalLimit = goals.reduce((sum, g) => sum + g.monthly_limit, 0);
+  const totalSpent = goals.reduce((sum, g) => sum + g.spent, 0);
+  const totalPct = totalLimit > 0 ? Math.round((totalSpent / totalLimit) * 100) : 0;
+
   function getProgressColor(pct: number) {
     if (pct > 100) return "bg-red-500";
     if (pct >= 70) return "bg-yellow-500";
@@ -171,52 +225,78 @@ export default function GoalsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {goals.map((g) => {
-                const cat = getCategoryConfig(g.category);
-                const Icon = cat.icon;
-                const pct = g.monthly_limit > 0 ? Math.round((g.spent / g.monthly_limit) * 100) : 0;
-                const barWidth = Math.min(pct, 100);
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={goals.map((g) => g.id)} strategy={verticalListSortingStrategy}>
+                  {goals.map((g) => {
+                    const cat = getCategoryConfig(g.category);
+                    const Icon = cat.icon;
+                    const pct = g.monthly_limit > 0 ? Math.round((g.spent / g.monthly_limit) * 100) : 0;
+                    const barWidth = Math.min(pct, 100);
 
-                return (
-                  <div key={g.id} className="glass-card p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                          style={{ backgroundColor: cat.color + "20" }}>
-                          <Icon size={16} style={{ color: cat.color }} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{cat.label}</p>
-                          <p className="text-xs text-white/40">
-                            {formatCurrency(g.spent)} / {formatCurrency(g.monthly_limit)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-bold ${getTextColor(pct)}`}>{pct}%</span>
-                        <button onClick={() => openEdit(g)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white">
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => setDeleteConfirm(g.id)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-red-400">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
+                    return (
+                      <SortableGoal key={g.id} id={g.id}>
+                        {(handle) => (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                {handle}
+                                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                                  style={{ backgroundColor: cat.color + "20" }}>
+                                  <Icon size={16} style={{ color: cat.color }} />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium">{cat.label}</p>
+                                  <p className="text-xs text-white/40">
+                                    {formatCurrency(g.spent)} / {formatCurrency(g.monthly_limit)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-sm font-bold ${getTextColor(pct)}`}>{pct}%</span>
+                                <button onClick={() => openEdit(g)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white">
+                                  <Pencil size={14} />
+                                </button>
+                                <button onClick={() => setDeleteConfirm(g.id)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-red-400">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
 
-                    {/* Progress Bar */}
-                    <div className="w-full h-2 rounded-full bg-white/10">
-                      <div className={`h-full rounded-full transition-all ${getProgressColor(pct)}`}
-                        style={{ width: `${barWidth}%` }} />
-                    </div>
+                            {/* Progress Bar */}
+                            <div className="w-full h-2 rounded-full bg-white/10">
+                              <div className={`h-full rounded-full transition-all ${getProgressColor(pct)}`}
+                                style={{ width: `${barWidth}%` }} />
+                            </div>
 
-                    {pct >= 80 && (
-                      <p className="text-xs text-yellow-400/80">
-                        {pct >= 100 ? "Limite ultrapassado!" : `${pct}% do limite atingido`}
-                      </p>
-                    )}
+                            {pct >= 80 && (
+                              <p className="text-xs text-yellow-400/80">
+                                {pct >= 100 ? "Limite ultrapassado!" : `${pct}% do limite atingido`}
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </SortableGoal>
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
+
+              {/* Total das metas */}
+              <div className="glass-card p-4 space-y-3 border-t border-white/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold">Total das metas</p>
+                    <p className="text-xs text-white/40">
+                      {formatCurrency(totalSpent)} / {formatCurrency(totalLimit)}
+                    </p>
                   </div>
-                );
-              })}
+                  <span className={`text-sm font-bold ${getTextColor(totalPct)}`}>{totalPct}%</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-white/10">
+                  <div className={`h-full rounded-full transition-all ${getProgressColor(totalPct)}`}
+                    style={{ width: `${Math.min(totalPct, 100)}%` }} />
+                </div>
+              </div>
             </div>
           )}
 
