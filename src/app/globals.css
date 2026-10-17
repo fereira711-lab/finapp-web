@@ -13,6 +13,11 @@
   --text-secondary: rgba(255, 255, 255, 0.45);
 }
 
+/* Escala geral do texto: tudo em rem (text-xs/sm/base/lg...) cresce junto com esta base. */
+html {
+  font-size: 17px;
+}
+
 html, body {
   background: var(--bg-gradient);
   background-attachment: fixed;
