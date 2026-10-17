@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { SHOP_CATEGORIES, parsePrice, priceToText } from "@/lib/shopping";
-import { X } from "lucide-react";
+import { SHOP_CATEGORIES, parseDays, parsePrice, priceToText } from "@/lib/shopping";
+import { Sparkles, X } from "lucide-react";
 
 export interface ItemFormValues {
-  name: string; qty: string; category: string; estimated_price: number; saveAsFixed: boolean;
+  name: string; qty: string; category: string; estimated_price: number;
+  duration_days: number | null; saveAsFixed: boolean;
 }
 
 interface Props {
@@ -22,12 +23,32 @@ export default function ItemFormModal({ title, initial, showSaveAsFixed, onSubmi
   const [category, setCategory] = useState(initial?.category || "mercearia");
   const [price, setPrice] = useState(priceToText(initial?.estimated_price ?? null));
   const [saveAsFixed, setSaveAsFixed] = useState(false);
+  const [days, setDays] = useState(initial?.duration_days ? String(initial.duration_days) : "");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState("");
+
+  async function suggest() {
+    if (!name.trim() || aiBusy) return;
+    setAiBusy(true); setAiMsg("");
+    try {
+      const res = await fetch("/api/shopping/suggest-duration", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, qty }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAiMsg(data.error || "Erro ao consultar a IA"); }
+      else { setDays(String(data.days)); setAiMsg(data.reason || ""); }
+    } catch {
+      setAiMsg("Erro de conexão com a IA");
+    }
+    setAiBusy(false);
+  }
 
   function submit() {
     if (!name.trim()) return;
     onSubmit({
       name: name.trim(), qty: qty.trim() || "1 un", category,
-      estimated_price: parsePrice(price), saveAsFixed,
+      estimated_price: parsePrice(price), duration_days: parseDays(days), saveAsFixed,
     });
   }
 
@@ -57,6 +78,19 @@ export default function ItemFormModal({ title, initial, showSaveAsFixed, onSubmi
               <input type="text" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)}
                 placeholder="0,00" className="glass-input w-full px-3 py-2 text-sm text-white" />
             </div>
+          </div>
+          <div>
+            <label className="label-upper mb-1 block">Dura quantos dias? (opcional)</label>
+            <div className="flex gap-2">
+              <input type="text" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))}
+                placeholder="Ex: 30" className="glass-input flex-1 px-3 py-2 text-sm text-white" />
+              <button type="button" onClick={suggest} disabled={aiBusy || !name.trim()}
+                className="glass-btn px-3 py-2 text-xs flex items-center gap-1.5 disabled:opacity-50">
+                <Sparkles size={14} /> {aiBusy ? "Pensando..." : "Sugerir com IA"}
+              </button>
+            </div>
+            {aiMsg && <p className="text-xs text-white/40 mt-1">{aiMsg}</p>}
+            <p className="text-[11px] text-white/30 mt-1">Com duração, o item só entra na lista quando estiver acabando.</p>
           </div>
           <div>
             <label className="label-upper mb-1 block">Categoria do mercado</label>

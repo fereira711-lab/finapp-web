@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { updateWalletBalance } from "@/lib/wallet";
 import { useCategories } from "@/lib/useCategories";
 import {
-  DEFAULT_BUDGET, addDays, mondayOf, shortDate, todayStr,
+  DEFAULT_BUDGET, addDays, mondayOf, shortDate, stockStatus, todayStr,
   type NewListItem, type ShoppingItem, type ShoppingList, type ShoppingListItem,
 } from "@/lib/shopping";
 import AppShell from "@/components/AppShell";
@@ -118,11 +118,17 @@ export default function ShoppingPage() {
       carried = (pend || []).map((p) => ({ ...p, estimated_price: Number(p.estimated_price) }));
     }
 
+    // itens com duracao so entram se acabam antes da proxima compra
     const rows = [
-      ...fixed.map((f) => ({
-        item_id: f.id, name: f.name, qty: f.qty, category: f.category, estimated_price: f.estimated_price,
-      })),
-      ...carried.map((c) => ({ item_id: null, ...c })),
+      ...fixed.flatMap((f) => {
+        const st = stockStatus(f, weekStart);
+        if (!st.due) return [];
+        return [{
+          item_id: f.id, name: f.name, qty: f.qty, category: f.category,
+          estimated_price: f.estimated_price, hint: st.hint,
+        }];
+      }),
+      ...carried.map((c) => ({ item_id: null, hint: "Sobrou da semana passada", ...c })),
     ].map((r, i) => ({ ...r, list_id: created.id, user_id: uid, position: i }));
 
     if (rows.length > 0) await supabase.from("shopping_list_items").insert(rows);
@@ -156,7 +162,7 @@ export default function ShoppingPage() {
     if (n.saveAsFixed) {
       const { data } = await supabase.from("shopping_items").insert({
         user_id: uid, name: n.name, qty: n.qty, category: n.category,
-        estimated_price: n.estimated_price, position: fixed.length,
+        estimated_price: n.estimated_price, duration_days: n.duration_days, position: fixed.length,
       }).select().single();
       itemId = data?.id || null;
     }
@@ -199,6 +205,12 @@ export default function ShoppingPage() {
       status: "done", total, transaction_id: tx.id, finished_at: new Date().toISOString(),
     }).eq("id", list.id);
 
+    // registra a data da compra dos itens fixos (base do alerta "esta acabando")
+    const boughtIds = done.map((i) => i.item_id).filter((id): id is string => Boolean(id));
+    if (boughtIds.length > 0) {
+      await supabase.from("shopping_items").update({ last_bought_at: todayStr() }).in("id", boughtIds);
+    }
+
     let walletOk = true;
     try { await updateWalletBalance(supabase, uid, -total); } catch { walletOk = false; }
 
@@ -208,7 +220,7 @@ export default function ShoppingPage() {
   }
 
   // ---------- Itens fixos ----------
-  async function saveFixed(data: { name: string; qty: string; category: string; estimated_price: number }, id?: string) {
+  async function saveFixed(data: { name: string; qty: string; category: string; estimated_price: number; duration_days: number | null }, id?: string) {
     const supabase = createClient();
     const uid = await getUserId();
     if (!uid) return;
@@ -217,6 +229,27 @@ export default function ShoppingPage() {
     } else {
       await supabase.from("shopping_items").insert({ ...data, user_id: uid, position: fixed.length });
     }
+    load();
+  }
+
+  async function addFromStock(f: ShoppingItem) {
+    if (!list || list.status === "done") return;
+    const supabase = createClient();
+    const uid = await getUserId();
+    if (!uid) return;
+    const st = stockStatus(f, weekStart);
+    await supabase.from("shopping_list_items").insert({
+      list_id: list.id, user_id: uid, item_id: f.id, name: f.name, qty: f.qty, category: f.category,
+      estimated_price: f.estimated_price, hint: st.hint ? `Adicionado antes da hora · ${st.hint.toLowerCase()}` : null,
+      position: items.length,
+    });
+    load();
+  }
+
+  async function applyDurations(updates: { id: string; days: number }[]) {
+    const supabase = createClient();
+    await Promise.all(updates.map((u) => supabase.from("shopping_items").update({ duration_days: u.days }).eq("id", u.id)));
+    showToast("Durações atualizadas ✓");
     load();
   }
 
@@ -283,10 +316,13 @@ export default function ShoppingPage() {
               hasFixed={fixed.length > 0} expenseCategories={expenseCategories}
               onGenerate={generateList} onSaveItem={saveItem} onRemoveItem={removeItem}
               onAddAvulso={addAvulso} onBudget={setBudget} onFinish={finish}
+              inStock={fixed.filter((f) => f.duration_days && !items.some((i) => i.item_id === f.id))}
+              weekStartForStock={weekStart} onAddFromStock={addFromStock}
             />
           )}
           {tab === "fixos" && (
-            <FixedTab items={fixed} onSave={saveFixed} onDelete={deleteFixed} onReorder={reorderFixed} />
+            <FixedTab items={fixed} weekStart={weekStart} onSave={saveFixed} onDelete={deleteFixed}
+              onReorder={reorderFixed} onApplyDurations={applyDurations} />
           )}
           {tab === "hist" && <HistoryTab history={history} monthCats={monthCats} />}
 

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { isNvidiaConfigured, nvidiaChat } from "@/lib/ai/nvidia";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -160,15 +161,25 @@ ${billsList || "  Nenhuma conta pendente"}`;
       { role: "user" as const, content: message },
     ];
 
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: apiMessages,
-    });
-
-    const text =
-      response.content[0].type === "text" ? response.content[0].text : "";
+    let text: string;
+    if (isNvidiaConfigured()) {
+      // Provedor gratuito da NVIDIA quando NVIDIA_API_KEY existe; senao usa Anthropic
+      text = await nvidiaChat(
+        [
+          { role: "system", content: systemPrompt },
+          ...apiMessages.filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string"),
+        ],
+        { maxTokens: 1024, temperature: 0.3 },
+      );
+    } else {
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: apiMessages,
+      });
+      text = response.content[0].type === "text" ? response.content[0].text : "";
+    }
 
     return NextResponse.json({ reply: text });
   } catch (err) {

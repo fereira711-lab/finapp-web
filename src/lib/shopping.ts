@@ -6,6 +6,8 @@ export interface ShoppingItem {
   qty: string;
   estimated_price: number;
   position: number | null;
+  duration_days: number | null;
+  last_bought_at: string | null;
 }
 
 export interface ShoppingList {
@@ -31,6 +33,7 @@ export interface ShoppingListItem {
   price: number | null;
   checked: boolean;
   position: number | null;
+  hint: string | null;
 }
 
 export interface NewListItem {
@@ -38,6 +41,7 @@ export interface NewListItem {
   qty: string;
   category: string;
   estimated_price: number;
+  duration_days: number | null;
   saveAsFixed: boolean;
 }
 
@@ -97,4 +101,55 @@ export function progressColors(pct: number) {
   if (pct > 100) return { bar: "bg-red-500", text: "text-red-400" };
   if (pct >= 70) return { bar: "bg-yellow-500", text: "text-yellow-400" };
   return { bar: "bg-green-500", text: "text-green-400" };
+}
+
+export function daysBetween(fromStr: string, toStr: string) {
+  const [fy, fm, fd] = fromStr.split("-").map(Number);
+  const [ty, tm, td] = toStr.split("-").map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+}
+
+export interface StockStatus {
+  /** precisa entrar na lista desta semana */
+  due: boolean;
+  /** dica curta (ex.: "Acaba em 3 dias") */
+  hint: string | null;
+  /** data em que o item acaba (YYYY-MM-DD) */
+  runsOut: string | null;
+  /** dias ate acabar (negativo = ja acabou) */
+  daysLeft: number | null;
+}
+
+function plural(n: number, one: string, many: string) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/**
+ * Item sem duracao: entra toda semana.
+ * Item com duracao: entra na semana se o estoque acaba antes da proxima data de compra
+ * (segunda seguinte a semana da lista).
+ */
+export function stockStatus(
+  item: Pick<ShoppingItem, "duration_days" | "last_bought_at">,
+  weekStart: string,
+  today: string = todayStr(),
+): StockStatus {
+  if (!item.duration_days) return { due: true, hint: null, runsOut: null, daysLeft: null };
+  if (!item.last_bought_at) {
+    return { due: true, hint: "Sem registro de compra", runsOut: null, daysLeft: null };
+  }
+  const runsOut = addDays(item.last_bought_at, item.duration_days);
+  const daysLeft = daysBetween(today, runsOut);
+  const nextBuy = addDays(weekStart, 7);
+  const due = runsOut < nextBuy;
+  let hint: string;
+  if (daysLeft < 0) hint = `Acabou há ${plural(-daysLeft, "dia", "dias")}`;
+  else if (daysLeft === 0) hint = "Acaba hoje";
+  else hint = `Acaba em ${plural(daysLeft, "dia", "dias")}`;
+  return { due, hint, runsOut, daysLeft };
+}
+
+export function parseDays(text: string): number | null {
+  const n = parseInt(text, 10);
+  return isNaN(n) || n < 1 || n > 365 ? null : n;
 }

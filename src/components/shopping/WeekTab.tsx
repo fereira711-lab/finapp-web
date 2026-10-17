@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import {
-  SHOP_CATEGORIES, parsePrice, priceToText, progressColors, shortDate, shopCat,
-  type NewListItem, type ShoppingList, type ShoppingListItem,
+  SHOP_CATEGORIES, parsePrice, priceToText, progressColors, shortDate, shopCat, stockStatus,
+  type NewListItem, type ShoppingItem, type ShoppingList, type ShoppingListItem,
 } from "@/lib/shopping";
 import type { Category } from "@/lib/useCategories";
 import ItemFormModal from "./ItemFormModal";
@@ -23,6 +23,9 @@ interface Props {
   onAddAvulso: (n: NewListItem) => void;
   onBudget: (v: number) => void;
   onFinish: (categoryName: string) => Promise<void>;
+  inStock: ShoppingItem[];
+  weekStartForStock: string;
+  onAddFromStock: (item: ShoppingItem) => void;
 }
 
 function Row({ item, locked, onSave, onRemove }: {
@@ -61,6 +64,7 @@ function Row({ item, locked, onSave, onRemove }: {
         <p className="text-[11px] text-white/40">
           {item.qty}{item.estimated_price > 0 && ` · est. ${formatCurrency(item.estimated_price)}`}
         </p>
+        {item.hint && !item.checked && <p className="text-[11px] text-yellow-400/90">{item.hint}</p>}
       </div>
       <input type="text" inputMode="decimal" value={text} disabled={locked}
         onChange={(e) => setText(e.target.value)} onBlur={commitPrice}
@@ -78,6 +82,7 @@ function Row({ item, locked, onSave, onRemove }: {
 export default function WeekTab({
   list, items, weekStart, isCurrentWeek, hasFixed, expenseCategories,
   onGenerate, onSaveItem, onRemoveItem, onAddAvulso, onBudget, onFinish,
+  inStock, weekStartForStock, onAddFromStock,
 }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [showBudget, setShowBudget] = useState(false);
@@ -166,6 +171,34 @@ export default function WeekTab({
             </div>
           );
         })
+      )}
+
+      {inStock.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <span className="label-upper">Em estoque (ainda não precisa)</span>
+          </div>
+          <div className="glass-card px-4 py-1">
+            {inStock
+              .map((f) => ({ f, st: stockStatus(f, weekStartForStock) }))
+              .sort((a, b) => (a.st.daysLeft ?? 9999) - (b.st.daysLeft ?? 9999))
+              .map(({ f, st }) => (
+                <div key={f.id} className="flex items-center gap-3 py-2.5 border-b border-white/[0.08] last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{f.name}</p>
+                    <p className="text-[11px] text-white/40">
+                      {st.runsOut ? `Dura até ${shortDate(st.runsOut)} · ${st.hint?.toLowerCase()}` : st.hint}
+                    </p>
+                  </div>
+                  {!locked && (
+                    <button onClick={() => onAddFromStock(f)} className="glass-btn px-2.5 py-1.5 text-[11px]">
+                      + Adicionar
+                    </button>
+                  )}
+                </div>
+              ))}
+          </div>
+        </div>
       )}
 
       {!locked && (
