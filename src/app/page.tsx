@@ -18,6 +18,8 @@ import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
 import { DashboardSkeleton } from "@/components/Skeleton";
 import QuickAddModal from "@/components/dashboard/QuickAddModal";
+import ChoresSection from "@/components/dashboard/ChoresSection";
+import ShoppingSection from "@/components/dashboard/ShoppingSection";
 import {
   Wallet, FileText, Calculator,
   CreditCard, ArrowUpRight, ArrowDownRight, Plus, Trash2,
@@ -721,6 +723,9 @@ export default function DashboardPage() {
               })()}
             </div>
           </div>
+
+          <ChoresSection />
+          <ShoppingSection />
         </div>
       )}
 
