@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, ArrowLeftRight, Receipt, CreditCard, MoreHorizontal, X,
-  Target, Tag, Tags, BarChart3, Bot, User,
+  Target, Tag, Tags, ShoppingCart, BarChart3, Bot, User,
 } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 
@@ -17,6 +17,7 @@ const primaryItems = [
 ];
 
 const moreItems = [
+  { href: "/shopping", label: "Compras", icon: ShoppingCart },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
   { href: "/categories", label: "Categorias", icon: Tags },
