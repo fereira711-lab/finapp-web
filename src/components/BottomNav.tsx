@@ -3,40 +3,39 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Home, ArrowLeftRight, Receipt, CreditCard, MoreHorizontal, X,
-  Target, Tag, Tags, ShoppingCart, ClipboardCheck, BarChart3, Bot, User,
-} from "lucide-react";
+import { MoreHorizontal, X } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 import { useStockAlerts } from "@/lib/useStockAlerts";
 import { useChoreAlerts } from "@/lib/useChoreAlerts";
+import { applyNavOrder, useNavOrder } from "@/lib/useNavOrder";
+import { MOBILE_BAR_SIZE, MOBILE_DEFAULT_ORDER, NAV_ITEMS } from "@/lib/navItems";
 
-const primaryItems = [
-  { href: "/", label: "Dashboard", icon: Home },
-  { href: "/bills", label: "Agenda", icon: Receipt },
-  { href: "/credit-cards", label: "Cartões", icon: CreditCard },
-  { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
-];
-
-const moreItems = [
-  { href: "/shopping", label: "Compras", icon: ShoppingCart },
-  { href: "/chores", label: "Casa", icon: ClipboardCheck },
-  { href: "/goals", label: "Metas", icon: Target },
-  { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
-  { href: "/categories", label: "Categorias", icon: Tags },
-  { href: "/reports", label: "Relatórios", icon: BarChart3 },
-  { href: "/ai", label: "IA Financeira", icon: Bot },
-  { href: "/profile", label: "Perfil", icon: User },
-];
+const RED = "bg-red-500";
+const AMBER = "bg-amber-500";
 
 export default function BottomNav() {
   const pathname = usePathname();
   const { totalAlerts } = useBillAlerts();
   const stock = useStockAlerts();
   const chores = useChoreAlerts();
+  const { order } = useNavOrder();
   const [showMore, setShowMore] = useState(false);
 
+  // mesma ordem do menu lateral; sem ordem personalizada vale a ordem padrão do celular
+  const ordered = applyNavOrder(NAV_ITEMS, order ?? MOBILE_DEFAULT_ORDER);
+  const primaryItems = ordered.slice(0, MOBILE_BAR_SIZE);
+  const moreItems = ordered.slice(MOBILE_BAR_SIZE);
+
+  const badgeFor = (href: string): { count: number; color: string } => {
+    if (href === "/bills") return { count: totalAlerts, color: RED };
+    if (href === "/shopping") return { count: stock.count, color: AMBER };
+    if (href === "/chores") return { count: chores.count, color: RED };
+    return { count: 0, color: RED };
+  };
+
   const moreActive = moreItems.some((i) => pathname === i.href);
+  const moreBadges = moreItems.map((i) => badgeFor(i.href)).filter((b) => b.count > 0);
+  const moreDot = moreBadges.length > 0 ? (moreBadges.some((b) => b.color === RED) ? RED : AMBER) : null;
 
   return (
     <>
@@ -44,7 +43,7 @@ export default function BottomNav() {
         <div className="flex justify-around items-center h-16 px-1">
           {primaryItems.map((item) => {
             const active = pathname === item.href;
-            const showBadge = item.href === "/bills" && totalAlerts > 0;
+            const badge = badgeFor(item.href);
             return (
               <Link
                 key={item.href}
@@ -55,13 +54,13 @@ export default function BottomNav() {
               >
                 <div className="relative">
                   <item.icon size={22} strokeWidth={active ? 2.5 : 1.8} />
-                  {showBadge && (
-                    <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-1">
-                      {totalAlerts > 9 ? "9+" : totalAlerts}
+                  {badge.count > 0 && (
+                    <span className={`absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center ${badge.color} text-white text-[9px] font-bold rounded-full px-1`}>
+                      {badge.count > 9 ? "9+" : badge.count}
                     </span>
                   )}
                 </div>
-                <span className="uppercase tracking-wider">{item.label}</span>
+                <span className="uppercase tracking-wider">{item.short}</span>
               </Link>
             );
           })}
@@ -76,9 +75,7 @@ export default function BottomNav() {
           >
             <div className="relative">
               <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 1.8} />
-              {(stock.count > 0 || chores.count > 0) && (
-                <span className={`absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full ${chores.count > 0 ? "bg-red-500" : "bg-amber-500"}`} />
-              )}
+              {moreDot && <span className={`absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full ${moreDot}`} />}
             </div>
             <span className="uppercase tracking-wider">Mais</span>
           </button>
@@ -102,6 +99,7 @@ export default function BottomNav() {
             <div className="p-3 grid grid-cols-3 gap-2">
               {moreItems.map((item) => {
                 const active = pathname === item.href;
+                const badge = badgeFor(item.href);
                 return (
                   <Link
                     key={item.href}
@@ -115,14 +113,9 @@ export default function BottomNav() {
                   >
                     <div className="relative">
                       <item.icon size={22} strokeWidth={active ? 2.2 : 1.8} />
-                      {item.href === "/shopping" && stock.count > 0 && (
-                        <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center bg-amber-500 text-white text-[9px] font-bold rounded-full px-1">
-                          {stock.count > 9 ? "9+" : stock.count}
-                        </span>
-                      )}
-                      {item.href === "/chores" && chores.count > 0 && (
-                        <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-1">
-                          {chores.count > 9 ? "9+" : chores.count}
+                      {badge.count > 0 && (
+                        <span className={`absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center ${badge.color} text-white text-[9px] font-bold rounded-full px-1`}>
+                          {badge.count > 9 ? "9+" : badge.count}
                         </span>
                       )}
                     </div>
