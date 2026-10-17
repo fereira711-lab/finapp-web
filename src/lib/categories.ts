@@ -32,7 +32,7 @@ export function getCategoryConfig(key: string) {
   if (CATEGORY_CONFIG[key]) return CATEGORY_CONFIG[key];
   // Dynamic category fallback — capitalize name, use generic icon/color
   return {
-    label: key.charAt(0).toUpperCase() + key.slice(1),
+    label: key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
     color: "#6366F1",
     icon: Package,
   };

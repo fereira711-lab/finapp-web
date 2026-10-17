@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ArrowLeftRight, Receipt, CreditCard, Bot, User, BarChart3, Target, Tag } from "lucide-react";
+import { Home, ArrowLeftRight, Receipt, CreditCard, Bot, User, BarChart3, Target, Tag, Tags } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
   { href: "/reports", label: "Relatórios", icon: BarChart3 },
   { href: "/transactions", label: "Transações", icon: ArrowLeftRight },
   { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
+  { href: "/categories", label: "Categorias", icon: Tags },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/ai", label: "IA Financeira", icon: Bot },
   { href: "/profile", label: "Perfil", icon: User },
