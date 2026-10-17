@@ -43,7 +43,7 @@ export default function DaySheet({ date, today, planner, routine, onClose, onTog
     <div className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-[3px] flex items-end md:items-center justify-center" onClick={onClose}>
       <div
         role="dialog" aria-label={`Tarefas de ${d} de ${MONTH_NAMES[m - 1]}`}
-        className="w-full max-w-md max-h-[82vh] overflow-y-auto rounded-t-[22px] md:rounded-[22px] border border-white/20 px-4 pt-2.5 pb-7"
+        className="w-full max-w-md max-h-[82vh] overflow-y-auto rounded-t-[22px] md:rounded-[22px] border border-white/20 px-4 pt-2.5 pb-[calc(1.75rem+env(safe-area-inset-bottom))]"
         style={{ background: "rgba(28,30,58,.98)" }}
         onClick={(e) => e.stopPropagation()}
       >
