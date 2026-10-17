@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ArrowLeftRight, Receipt, CreditCard, Bot, User, BarChart3, Target, Tag, Tags, ShoppingCart } from "lucide-react";
+import { Home, ArrowLeftRight, Receipt, CreditCard, Bot, User, BarChart3, Target, Tag, Tags, ShoppingCart, ClipboardCheck } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 import { useStockAlerts } from "@/lib/useStockAlerts";
+import { useChoreAlerts } from "@/lib/useChoreAlerts";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -15,6 +16,7 @@ const navItems = [
   { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
   { href: "/categories", label: "Categorias", icon: Tags },
   { href: "/shopping", label: "Compras", icon: ShoppingCart },
+  { href: "/chores", label: "Casa", icon: ClipboardCheck },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/ai", label: "IA Financeira", icon: Bot },
   { href: "/profile", label: "Perfil", icon: User },
@@ -24,6 +26,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { totalAlerts } = useBillAlerts();
   const stock = useStockAlerts();
+  const chores = useChoreAlerts();
 
   return (
     <aside className="hidden md:flex md:flex-col md:w-64 glass-nav h-screen fixed left-0 top-0 z-40"
@@ -36,7 +39,9 @@ export default function Sidebar() {
         {navItems.map((item) => {
           const active = pathname === item.href;
           const isStock = item.href === "/shopping";
-          const badgeCount = item.href === "/bills" ? totalAlerts : isStock ? stock.count : 0;
+          const badgeCount = item.href === "/bills" ? totalAlerts
+            : isStock ? stock.count
+            : item.href === "/chores" ? chores.count : 0;
           const showBadge = badgeCount > 0;
           return (
             <Link
@@ -52,7 +57,7 @@ export default function Sidebar() {
               <span className="flex-1">{item.label}</span>
               {showBadge && (
                 <span
-                  title={isStock ? "Itens acabando" : undefined}
+                  title={isStock ? "Itens acabando" : item.href === "/chores" ? "Tarefas atrasadas" : undefined}
                   className={`min-w-[20px] h-5 flex items-center justify-center text-white text-[10px] font-bold rounded-full px-1.5 ${
                     isStock ? "bg-amber-500" : "bg-red-500"
                   }`}

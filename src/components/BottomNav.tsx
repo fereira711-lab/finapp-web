@@ -5,10 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, ArrowLeftRight, Receipt, CreditCard, MoreHorizontal, X,
-  Target, Tag, Tags, ShoppingCart, BarChart3, Bot, User,
+  Target, Tag, Tags, ShoppingCart, ClipboardCheck, BarChart3, Bot, User,
 } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
 import { useStockAlerts } from "@/lib/useStockAlerts";
+import { useChoreAlerts } from "@/lib/useChoreAlerts";
 
 const primaryItems = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -19,6 +20,7 @@ const primaryItems = [
 
 const moreItems = [
   { href: "/shopping", label: "Compras", icon: ShoppingCart },
+  { href: "/chores", label: "Casa", icon: ClipboardCheck },
   { href: "/goals", label: "Metas", icon: Target },
   { href: "/category-rules", label: "Regras de Categoria", icon: Tag },
   { href: "/categories", label: "Categorias", icon: Tags },
@@ -31,6 +33,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   const { totalAlerts } = useBillAlerts();
   const stock = useStockAlerts();
+  const chores = useChoreAlerts();
   const [showMore, setShowMore] = useState(false);
 
   const moreActive = moreItems.some((i) => pathname === i.href);
@@ -73,8 +76,8 @@ export default function BottomNav() {
           >
             <div className="relative">
               <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 1.8} />
-              {stock.count > 0 && (
-                <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-amber-500 rounded-full" />
+              {(stock.count > 0 || chores.count > 0) && (
+                <span className={`absolute -top-1 -right-1.5 w-2.5 h-2.5 rounded-full ${chores.count > 0 ? "bg-red-500" : "bg-amber-500"}`} />
               )}
             </div>
             <span className="uppercase tracking-wider">Mais</span>
@@ -115,6 +118,11 @@ export default function BottomNav() {
                       {item.href === "/shopping" && stock.count > 0 && (
                         <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center bg-amber-500 text-white text-[9px] font-bold rounded-full px-1">
                           {stock.count > 9 ? "9+" : stock.count}
+                        </span>
+                      )}
+                      {item.href === "/chores" && chores.count > 0 && (
+                        <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-1">
+                          {chores.count > 9 ? "9+" : chores.count}
                         </span>
                       )}
                     </div>
