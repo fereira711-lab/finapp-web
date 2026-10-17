@@ -483,6 +483,10 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {/* Casa e Compras tem prioridade: logo abaixo da primeira linha financeira */}
+          <ChoresSection />
+          <ShoppingSection />
+
           <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
             <div className="space-y-4">
               <div className="glass-card p-4">
@@ -723,9 +727,6 @@ export default function DashboardPage() {
               })()}
             </div>
           </div>
-
-          <ChoresSection />
-          <ShoppingSection />
         </div>
       )}
 
