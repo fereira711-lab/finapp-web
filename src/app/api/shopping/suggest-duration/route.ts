@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
         },
         { role: "user", content: `Item: ${name}\nQuantidade comprada: ${qty || "não informada"}` },
       ],
-      { maxTokens: 200, temperature: 0.1 },
+      { maxTokens: 400, temperature: 0.1 },
     );
 
     const parsed = extractJson<{ days?: unknown; reason?: unknown }>(text);

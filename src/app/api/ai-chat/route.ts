@@ -161,17 +161,24 @@ ${billsList || "  Nenhuma conta pendente"}`;
       { role: "user" as const, content: message },
     ];
 
-    let text: string;
+    let text: string | null = null;
     if (isNvidiaConfigured()) {
-      // Provedor gratuito da NVIDIA quando NVIDIA_API_KEY existe; senao usa Anthropic
-      text = await nvidiaChat(
-        [
-          { role: "system", content: systemPrompt },
-          ...apiMessages.filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string"),
-        ],
-        { maxTokens: 1024, temperature: 0.3 },
-      );
-    } else {
+      // Provedor gratuito da NVIDIA quando NVIDIA_API_KEY existe
+      try {
+        text = await nvidiaChat(
+          [
+            { role: "system", content: systemPrompt },
+            ...apiMessages.filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string"),
+          ],
+          { maxTokens: 1024, temperature: 0.3 },
+        );
+      } catch (nvErr) {
+        // se a NVIDIA falhar e houver chave da Anthropic, usa a Anthropic como reserva
+        console.error("NVIDIA chat falhou:", nvErr);
+        if (!process.env.ANTHROPIC_API_KEY) throw nvErr;
+      }
+    }
+    if (text === null) {
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 1024,

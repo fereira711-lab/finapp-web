@@ -69,7 +69,7 @@ export async function POST() {
         },
         { role: "user", content: JSON.stringify(stats) },
       ],
-      { maxTokens: 900, temperature: 0.1 },
+      { maxTokens: 1200, temperature: 0.1 },
     );
 
     const parsed = extractJson<{ suggestions?: { item_id?: unknown; days?: unknown; reason?: unknown }[] }>(text);
