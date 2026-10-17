@@ -23,7 +23,7 @@ interface Props {
   items: ShoppingItem[];
   weekStart: string;
   onApplyDurations: (updates: { id: string; days: number }[]) => void;
-  onSave: (data: { name: string; qty: string; category: string; estimated_price: number; duration_days: number | null }, id?: string) => void;
+  onSave: (data: { name: string; qty: string; category: string; estimated_price: number; duration_days: number | null; last_bought_at: string | null }, id?: string) => void;
   onDelete: (id: string) => void;
   onReorder: (next: ShoppingItem[]) => void;
 }
@@ -155,9 +155,14 @@ export default function FixedTab({ items, weekStart, onSave, onDelete, onReorder
         <ItemFormModal
           title={editing ? "Editar item fixo" : "Novo item fixo"}
           initial={editing || undefined}
+          showLastBought
           onClose={() => { setCreating(false); setEditing(null); }}
           onSubmit={(v) => {
-            onSave({ name: v.name, qty: v.qty, category: v.category, estimated_price: v.estimated_price, duration_days: v.duration_days }, editing?.id);
+            // sem duração não há o que acompanhar: não guarda data de compra
+            onSave({
+              name: v.name, qty: v.qty, category: v.category, estimated_price: v.estimated_price,
+              duration_days: v.duration_days, last_bought_at: v.duration_days ? v.last_bought_at : null,
+            }, editing?.id);
             setCreating(false); setEditing(null);
           }} />
       )}

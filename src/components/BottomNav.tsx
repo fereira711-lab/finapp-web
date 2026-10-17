@@ -8,6 +8,7 @@ import {
   Target, Tag, Tags, ShoppingCart, BarChart3, Bot, User,
 } from "lucide-react";
 import { useBillAlerts } from "@/lib/useBillAlerts";
+import { useStockAlerts } from "@/lib/useStockAlerts";
 
 const primaryItems = [
   { href: "/", label: "Dashboard", icon: Home },
@@ -29,6 +30,7 @@ const moreItems = [
 export default function BottomNav() {
   const pathname = usePathname();
   const { totalAlerts } = useBillAlerts();
+  const stock = useStockAlerts();
   const [showMore, setShowMore] = useState(false);
 
   const moreActive = moreItems.some((i) => pathname === i.href);
@@ -69,7 +71,12 @@ export default function BottomNav() {
             }`}
             aria-label="Mais opcoes"
           >
-            <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 1.8} />
+            <div className="relative">
+              <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 1.8} />
+              {stock.count > 0 && (
+                <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-amber-500 rounded-full" />
+              )}
+            </div>
             <span className="uppercase tracking-wider">Mais</span>
           </button>
         </div>
@@ -103,7 +110,14 @@ export default function BottomNav() {
                         : "glass-btn text-white/60 active:text-white"
                     }`}
                   >
-                    <item.icon size={22} strokeWidth={active ? 2.2 : 1.8} />
+                    <div className="relative">
+                      <item.icon size={22} strokeWidth={active ? 2.2 : 1.8} />
+                      {item.href === "/shopping" && stock.count > 0 && (
+                        <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 flex items-center justify-center bg-amber-500 text-white text-[9px] font-bold rounded-full px-1">
+                          {stock.count > 9 ? "9+" : stock.count}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[11px] text-center leading-tight">{item.label}</span>
                   </Link>
                 );

@@ -18,13 +18,16 @@ export async function POST(req: NextRequest) {
         {
           role: "system",
           content:
-            "Você estima quanto tempo um item de supermercado dura numa casa. " +
+            "Você estima quanto tempo um item de supermercado dura para UMA única pessoa adulta que mora sozinha no Brasil. " +
             "Responda APENAS com JSON no formato {\"days\": <inteiro de 1 a 365>, \"reason\": \"<frase curta em português>\"}. " +
-            "Considere a quantidade informada e uso típico de uma pessoa ou família pequena.",
+            "Considere a quantidade informada; se ela não vier clara (ex.: \"1 un\"), assuma a embalagem mais comum do item. " +
+            "É só uma estimativa inicial: o app aprende o ritmo real com as compras. " +
+            "Referências do usuário: arroz 5 kg = 30 dias; carne 1 kg = 5 dias.",
         },
         { role: "user", content: `Item: ${name}\nQuantidade comprada: ${qty || "não informada"}` },
       ],
-      { maxTokens: 400, temperature: 0.1 },
+      // gpt-oss "pensa" antes de responder: precisa de folga de tokens; 20 s por modelo antes de cair para o reserva
+      { maxTokens: 600, temperature: 0.1, timeoutMs: 20000 },
     );
 
     const parsed = extractJson<{ days?: unknown; reason?: unknown }>(text);

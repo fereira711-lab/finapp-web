@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { updateWalletBalance } from "@/lib/wallet";
 import { useCategories } from "@/lib/useCategories";
 import {
-  DEFAULT_BUDGET, addDays, mondayOf, shortDate, stockStatus, todayStr,
+  DEFAULT_BUDGET, addDays, daysBetween, mondayOf, shortDate, stockStatus, todayStr,
   type NewListItem, type ShoppingItem, type ShoppingList, type ShoppingListItem,
 } from "@/lib/shopping";
 import AppShell from "@/components/AppShell";
@@ -13,7 +13,8 @@ import { ListSkeleton } from "@/components/Skeleton";
 import WeekTab from "@/components/shopping/WeekTab";
 import FixedTab from "@/components/shopping/FixedTab";
 import HistoryTab from "@/components/shopping/HistoryTab";
-import { ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
+import { useStockAlerts, daysLeftLabel } from "@/lib/useStockAlerts";
+import { AlertTriangle, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
 
 type Tab = "semana" | "fixos" | "hist";
 const TABS: { key: Tab; label: string }[] = [
@@ -205,22 +206,40 @@ export default function ShoppingPage() {
       status: "done", total, transaction_id: tx.id, finished_at: new Date().toISOString(),
     }).eq("id", list.id);
 
-    // registra a data da compra dos itens fixos (base do alerta "esta acabando")
-    const boughtIds = done.map((i) => i.item_id).filter((id): id is string => Boolean(id));
-    if (boughtIds.length > 0) {
-      await supabase.from("shopping_items").update({ last_bought_at: todayStr() }).in("id", boughtIds);
-    }
+    // registra a data da compra dos itens fixos (base do alerta "esta acabando") e
+    // aprende o ritmo real: aproxima a duração do intervalo desde a compra anterior
+    // (70% valor atual + 30% intervalo real, para não oscilar com uma compra fora do normal).
+    // Não aprende de item comprado antes da hora ("Adicionado antes da hora") nem de intervalos < 3 dias.
+    const today = todayStr();
+    const fixedById = new Map(fixed.map((f) => [f.id, f]));
+    let learned = 0;
+    await Promise.all(
+      done.flatMap((i) => {
+        if (!i.item_id) return [];
+        const f = fixedById.get(i.item_id);
+        const patch: { last_bought_at: string; duration_days?: number } = { last_bought_at: today };
+        if (f?.duration_days && f.last_bought_at && !i.hint?.startsWith("Adicionado antes")) {
+          const gap = daysBetween(f.last_bought_at, today);
+          if (gap >= 3) {
+            const next = Math.min(365, Math.max(1, Math.round(f.duration_days * 0.7 + gap * 0.3)));
+            if (next !== f.duration_days) { patch.duration_days = next; learned++; }
+          }
+        }
+        return [supabase.from("shopping_items").update(patch).eq("id", i.item_id)];
+      }),
+    );
 
     let walletOk = true;
     try { await updateWalletBalance(supabase, uid, -total); } catch { walletOk = false; }
 
     window.dispatchEvent(new Event("finapp:data-changed"));
-    showToast(walletOk ? "Despesa lançada em Transações ✓" : "Despesa lançada, mas o saldo não foi atualizado");
+    const learnedMsg = learned > 0 ? ` · ${learned} ${learned === 1 ? "duração ajustada" : "durações ajustadas"} pelo seu histórico` : "";
+    showToast((walletOk ? "Despesa lançada em Transações ✓" : "Despesa lançada, mas o saldo não foi atualizado") + learnedMsg);
     load();
   }
 
   // ---------- Itens fixos ----------
-  async function saveFixed(data: { name: string; qty: string; category: string; estimated_price: number; duration_days: number | null }, id?: string) {
+  async function saveFixed(data: { name: string; qty: string; category: string; estimated_price: number; duration_days: number | null; last_bought_at: string | null }, id?: string) {
     const supabase = createClient();
     const uid = await getUserId();
     if (!uid) return;
@@ -229,6 +248,7 @@ export default function ShoppingPage() {
     } else {
       await supabase.from("shopping_items").insert({ ...data, user_id: uid, position: fixed.length });
     }
+    window.dispatchEvent(new Event("finapp:stock-changed"));
     load();
   }
 
@@ -250,12 +270,14 @@ export default function ShoppingPage() {
     const supabase = createClient();
     await Promise.all(updates.map((u) => supabase.from("shopping_items").update({ duration_days: u.days }).eq("id", u.id)));
     showToast("Durações atualizadas ✓");
+    window.dispatchEvent(new Event("finapp:stock-changed"));
     load();
   }
 
   async function deleteFixed(id: string) {
     const supabase = createClient();
     await supabase.from("shopping_items").delete().eq("id", id);
+    window.dispatchEvent(new Event("finapp:stock-changed"));
     load();
   }
 
@@ -268,6 +290,7 @@ export default function ShoppingPage() {
     if (results.some((r) => r.error)) load();
   }
 
+  const stockAlerts = useStockAlerts();
   const expenseCategories = categories.filter((c) => c.name !== "salario" && c.name !== "investimento");
   const isCurrentWeek = weekStart === mondayOf();
 
@@ -298,6 +321,21 @@ export default function ShoppingPage() {
               </button>
             </div>
           </div>
+
+          {/* Itens acabando */}
+          {stockAlerts.items.length > 0 && (
+            <div className="glass-card px-3 py-2.5 border border-amber-500/30">
+              <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+                <AlertTriangle size={14} /> Acabando
+              </p>
+              <p className="text-xs text-white/60 mt-1">
+                {stockAlerts.items.map((i) => `${i.name} (${daysLeftLabel(i.daysLeft)})`).join(" · ")}
+              </p>
+              <p className="text-[11px] text-white/35 mt-1">
+                Entram na lista da semana com a dica. Na aba Semana, &quot;Em estoque&quot; mostra o que ainda dura.
+              </p>
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex gap-1.5 glass-card p-1">

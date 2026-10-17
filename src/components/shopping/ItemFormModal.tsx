@@ -1,29 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { SHOP_CATEGORIES, parseDays, parsePrice, priceToText } from "@/lib/shopping";
+import { SHOP_CATEGORIES, parseDays, parsePrice, priceToText, todayStr } from "@/lib/shopping";
 import { Sparkles, X } from "lucide-react";
 
 export interface ItemFormValues {
   name: string; qty: string; category: string; estimated_price: number;
   duration_days: number | null; saveAsFixed: boolean;
+  /** só preenchido no cadastro de item fixo (YYYY-MM-DD) */
+  last_bought_at: string | null;
 }
 
 interface Props {
   title: string;
   initial?: Partial<ItemFormValues>;
   showSaveAsFixed?: boolean;
+  /** mostra o campo "Última compra" (itens fixos) */
+  showLastBought?: boolean;
   onSubmit: (v: ItemFormValues) => void;
   onClose: () => void;
 }
 
-export default function ItemFormModal({ title, initial, showSaveAsFixed, onSubmit, onClose }: Props) {
+export default function ItemFormModal({ title, initial, showSaveAsFixed, showLastBought, onSubmit, onClose }: Props) {
   const [name, setName] = useState(initial?.name || "");
   const [qty, setQty] = useState(initial?.qty || "1 un");
   const [category, setCategory] = useState(initial?.category || "mercearia");
   const [price, setPrice] = useState(priceToText(initial?.estimated_price ?? null));
   const [saveAsFixed, setSaveAsFixed] = useState(false);
   const [days, setDays] = useState(initial?.duration_days ? String(initial.duration_days) : "");
+  const [lastBought, setLastBought] = useState(initial?.last_bought_at || "");
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState("");
 
@@ -46,9 +51,12 @@ export default function ItemFormModal({ title, initial, showSaveAsFixed, onSubmi
 
   function submit() {
     if (!name.trim()) return;
+    const today = todayStr();
     onSubmit({
       name: name.trim(), qty: qty.trim() || "1 un", category,
       estimated_price: parsePrice(price), duration_days: parseDays(days), saveAsFixed,
+      // data futura não faz sentido para "última compra"
+      last_bought_at: lastBought ? (lastBought > today ? today : lastBought) : null,
     });
   }
 
@@ -92,6 +100,16 @@ export default function ItemFormModal({ title, initial, showSaveAsFixed, onSubmi
             {aiMsg && <p className="text-xs text-white/40 mt-1">{aiMsg}</p>}
             <p className="text-[11px] text-white/30 mt-1">Com duração, o item só entra na lista quando estiver acabando.</p>
           </div>
+          {showLastBought && (
+            <div>
+              <label className="label-upper mb-1 block">Última compra (opcional)</label>
+              <input type="date" value={lastBought} max={todayStr()} onChange={(e) => setLastBought(e.target.value)}
+                className="glass-input w-full px-3 py-2 text-sm text-white" style={{ colorScheme: "dark" }} />
+              <p className="text-[11px] text-white/30 mt-1">
+                Quando comprou pela última vez? Com a data, o app já sabe quando acaba e avisa.
+              </p>
+            </div>
+          )}
           <div>
             <label className="label-upper mb-1 block">Categoria do mercado</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)}
