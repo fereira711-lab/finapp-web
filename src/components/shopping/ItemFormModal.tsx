@@ -98,7 +98,9 @@ export default function ItemFormModal({ title, initial, showSaveAsFixed, showLas
               </button>
             </div>
             {aiMsg && <p className="text-xs text-white/40 mt-1">{aiMsg}</p>}
-            <p className="text-[11px] text-white/30 mt-1">Com duração, o item só entra na lista quando estiver acabando.</p>
+            <p className="text-[11px] text-white/30 mt-1">
+              Com duração, o item só entra na lista quando estiver acabando. Não sabe? Deixe em branco: o app registra a 1ª compra e calcula a duração na próxima.
+            </p>
           </div>
           {showLastBought && (
             <div>

@@ -212,17 +212,25 @@ export default function ShoppingPage() {
     // Não aprende de item comprado antes da hora ("Adicionado antes da hora") nem de intervalos < 3 dias.
     const today = todayStr();
     const fixedById = new Map(fixed.map((f) => [f.id, f]));
+    // Item SEM duração: a 1ª compra só registra a data; a próxima calcula a duração
+    // (intervalo real entre as duas compras).
     let learned = 0;
+    let firstCalc = 0;
     await Promise.all(
       done.flatMap((i) => {
         if (!i.item_id) return [];
         const f = fixedById.get(i.item_id);
         const patch: { last_bought_at: string; duration_days?: number } = { last_bought_at: today };
-        if (f?.duration_days && f.last_bought_at && !i.hint?.startsWith("Adicionado antes")) {
+        if (f?.last_bought_at && !i.hint?.startsWith("Adicionado antes")) {
           const gap = daysBetween(f.last_bought_at, today);
           if (gap >= 3) {
-            const next = Math.min(365, Math.max(1, Math.round(f.duration_days * 0.7 + gap * 0.3)));
-            if (next !== f.duration_days) { patch.duration_days = next; learned++; }
+            if (f.duration_days) {
+              const next = Math.min(365, Math.max(1, Math.round(f.duration_days * 0.7 + gap * 0.3)));
+              if (next !== f.duration_days) { patch.duration_days = next; learned++; }
+            } else {
+              patch.duration_days = Math.min(365, gap);
+              firstCalc++;
+            }
           }
         }
         return [supabase.from("shopping_items").update(patch).eq("id", i.item_id)];
@@ -233,7 +241,10 @@ export default function ShoppingPage() {
     try { await updateWalletBalance(supabase, uid, -total); } catch { walletOk = false; }
 
     window.dispatchEvent(new Event("finapp:data-changed"));
-    const learnedMsg = learned > 0 ? ` · ${learned} ${learned === 1 ? "duração ajustada" : "durações ajustadas"} pelo seu histórico` : "";
+    const learnedMsg =
+      (firstCalc > 0 ? ` · ${firstCalc} ${firstCalc === 1 ? "duração calculada" : "durações calculadas"} pela 2ª compra` : "") +
+      (learned > 0 ? ` · ${learned} ${learned === 1 ? "duração ajustada" : "durações ajustadas"} pelo seu histórico` : "");
+    window.dispatchEvent(new Event("finapp:stock-changed"));
     showToast((walletOk ? "Despesa lançada em Transações ✓" : "Despesa lançada, mas o saldo não foi atualizado") + learnedMsg);
     load();
   }

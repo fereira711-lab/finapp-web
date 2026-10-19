@@ -127,6 +127,13 @@ export default function FixedTab({ items, weekStart, onSave, onDelete, onReorder
                             {c.label} · {it.qty}
                             {it.duration_days && ` · dura ${it.duration_days} dias`}
                           </p>
+                          {!it.duration_days && (
+                            <p className="text-[11px] text-indigo-300/80">
+                              {it.last_bought_at
+                                ? `1ª compra em ${shortDate(it.last_bought_at)} · a duração é calculada na próxima compra`
+                                : "Sem duração · registra a 1ª compra e calcula a duração na próxima"}
+                            </p>
+                          )}
                           {it.duration_days && (() => {
                             const st = stockStatus(it, weekStart);
                             return st.hint && st.runsOut ? (
@@ -158,10 +165,10 @@ export default function FixedTab({ items, weekStart, onSave, onDelete, onReorder
           showLastBought
           onClose={() => { setCreating(false); setEditing(null); }}
           onSubmit={(v) => {
-            // sem duração não há o que acompanhar: não guarda data de compra
+            // mantém a data da última compra mesmo sem duração: é a base para calcular a duração na próxima compra
             onSave({
               name: v.name, qty: v.qty, category: v.category, estimated_price: v.estimated_price,
-              duration_days: v.duration_days, last_bought_at: v.duration_days ? v.last_bought_at : null,
+              duration_days: v.duration_days, last_bought_at: v.last_bought_at,
             }, editing?.id);
             setCreating(false); setEditing(null);
           }} />
