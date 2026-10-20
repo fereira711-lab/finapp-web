@@ -83,7 +83,10 @@ export default function HistoryTab({ history, monthCats }: Props) {
             const pct = l.budget > 0 ? Math.round((total / l.budget) * 100) : 0;
             return (
               <div key={l.id} className="glass-card px-4 py-3 flex items-center justify-between">
-                <p className="text-sm font-bold">Seg {shortDate(l.week_start)}</p>
+                <div>
+                  <p className="text-sm font-bold">Seg {shortDate(l.week_start)}</p>
+                  {l.finished_at && <p className="text-[11px] text-white/40">comprou em {shortDate(l.finished_at.slice(0, 10))}</p>}
+                </div>
                 <div className="text-right">
                   <p className="text-sm font-bold">{formatCurrency(total)}</p>
                   <p className={`text-[11px] ${progressColors(pct).text}`}>{pct}% do orçamento</p>

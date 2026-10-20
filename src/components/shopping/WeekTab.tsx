@@ -6,7 +6,6 @@ import {
   SHOP_CATEGORIES, parsePrice, priceToText, progressColors, shortDate, shopCat, stockStatus,
   type NewListItem, type ShoppingItem, type ShoppingList, type ShoppingListItem,
 } from "@/lib/shopping";
-import type { Category } from "@/lib/useCategories";
 import ItemFormModal from "./ItemFormModal";
 import { Check, Plus, Trash2, X } from "lucide-react";
 
@@ -16,13 +15,13 @@ interface Props {
   weekStart: string;
   isCurrentWeek: boolean;
   hasFixed: boolean;
-  expenseCategories: Category[];
   onGenerate: () => Promise<void>;
   onSaveItem: (id: string, patch: { checked?: boolean; price?: number | null }) => void;
   onRemoveItem: (id: string) => void;
   onAddAvulso: (n: NewListItem) => void;
   onBudget: (v: number) => void;
-  onFinish: (categoryName: string) => Promise<void>;
+  onFinish: () => Promise<void>;
+  onNewPurchase: () => Promise<void>;
   inStock: ShoppingItem[];
   weekStartForStock: string;
   onAddFromStock: (item: ShoppingItem) => void;
@@ -80,15 +79,14 @@ function Row({ item, locked, onSave, onRemove }: {
 }
 
 export default function WeekTab({
-  list, items, weekStart, isCurrentWeek, hasFixed, expenseCategories,
-  onGenerate, onSaveItem, onRemoveItem, onAddAvulso, onBudget, onFinish,
+  list, items, weekStart, isCurrentWeek, hasFixed,
+  onGenerate, onSaveItem, onRemoveItem, onAddAvulso, onBudget, onFinish, onNewPurchase,
   inStock, weekStartForStock, onAddFromStock,
 }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [showBudget, setShowBudget] = useState(false);
   const [budgetText, setBudgetText] = useState("");
   const [showFinish, setShowFinish] = useState(false);
-  const [finishCat, setFinishCat] = useState("alimentacao");
   const [busy, setBusy] = useState(false);
 
   if (!list) {
@@ -116,6 +114,12 @@ export default function WeekTab({
   const pct = list.budget > 0 ? Math.round((total / list.budget) * 100) : 0;
   const colors = progressColors(pct);
   const pending = items.length - done.length;
+  const finishParts = Object.entries(
+    done.reduce<Record<string, number>>((acc, i) => {
+      acc[i.category] = (acc[i.category] || 0) + (i.price ?? 0);
+      return acc;
+    }, {}),
+  ).filter(([, v]) => v > 0).map(([key, amount]) => ({ key, amount }));
 
   const groupKeys = [
     ...Object.keys(SHOP_CATEGORIES),
@@ -147,7 +151,16 @@ export default function WeekTab({
           <div className={`h-full rounded-full transition-all ${colors.bar}`} style={{ width: `${Math.min(pct, 100)}%` }} />
         </div>
         {locked && (
-          <p className="text-xs text-green-400">Compra finalizada — despesa lançada em Transações.</p>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs text-green-400">Compra finalizada — despesas lançadas em Transações.</p>
+            {isCurrentWeek && (
+              <button disabled={busy}
+                onClick={async () => { setBusy(true); await onNewPurchase(); setBusy(false); }}
+                className="glass-btn-active px-3 py-1.5 text-xs font-medium disabled:opacity-50 flex items-center gap-1.5">
+                <Plus size={14} /> Nova compra nesta semana
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -269,25 +282,28 @@ export default function WeekTab({
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => !busy && setShowFinish(false)}>
           <div className="glass w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-sm font-bold">Finalizar compra da semana</h2>
-            <p className="text-xs text-white/50">Será lançada <b className="text-white">1 despesa</b> em Transações:</p>
+            <p className="text-xs text-white/50">
+              Será lançada <b className="text-white">1 despesa por categoria</b> em Transações:
+            </p>
             <p className="text-3xl font-bold">{formatCurrency(total)}</p>
             <p className="text-xs text-white/40">Seg {shortDate(weekStart)} · {done.length} itens</p>
-            <div>
-              <label className="label-upper mb-1 block">Categoria da despesa</label>
-              <select value={finishCat} onChange={(e) => setFinishCat(e.target.value)}
-                className="glass-input w-full px-3 py-2 text-sm" style={{ background: "#1E293B", color: "white" }}>
-                {expenseCategories.map((c) => (
-                  <option key={c.name} value={c.name} style={{ background: "#1E293B", color: "white" }}>{c.label}</option>
-                ))}
-              </select>
+            <div className="glass-card px-3 py-1">
+              {finishParts.map((p) => (
+                <div key={p.key} className="flex items-center gap-2 py-2 border-b border-white/[0.08] last:border-0 text-sm">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: shopCat(p.key).color }} />
+                  <span className="flex-1">{shopCat(p.key).label}</span>
+                  <span className="font-semibold">{formatCurrency(p.amount)}</span>
+                </div>
+              ))}
             </div>
+            <p className="text-[11px] text-white/30">As categorias que ainda não existem em Categorias são criadas sozinhas.</p>
             <p className="text-xs text-white/40">
               {pending > 0 ? `${pending} item(ns) não comprado(s): os avulsos vão para a próxima lista, os fixos já entram toda semana.` : "Todos os itens foram comprados."}
             </p>
             <div className="flex gap-3 pt-1">
               <button disabled={busy} onClick={() => setShowFinish(false)} className="glass-btn flex-1 py-2.5 text-sm">Cancelar</button>
               <button disabled={busy} className="glass-btn-active flex-1 py-2.5 text-sm font-medium disabled:opacity-50"
-                onClick={async () => { setBusy(true); await onFinish(finishCat); setBusy(false); setShowFinish(false); }}>
+                onClick={async () => { setBusy(true); await onFinish(); setBusy(false); setShowFinish(false); }}>
                 Lançar despesa
               </button>
             </div>

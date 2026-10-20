@@ -29,7 +29,8 @@ export default function ShoppingSection() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data: list } = await supabase.from("shopping_lists").select("id, budget, status")
-        .eq("user_id", user.id).eq("week_start", mondayOf()).maybeSingle();
+        .eq("user_id", user.id).eq("week_start", mondayOf())
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (!list) { setWeek(null); return; }
       const { data: items } = await supabase.from("shopping_list_items")
         .select("checked, price, estimated_price").eq("list_id", list.id);

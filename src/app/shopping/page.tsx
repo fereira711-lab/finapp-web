@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { updateWalletBalance } from "@/lib/wallet";
-import { useCategories } from "@/lib/useCategories";
+import { categoryKey } from "@/lib/useCategories";
 import {
-  DEFAULT_BUDGET, addDays, daysBetween, mondayOf, shortDate, stockStatus, todayStr,
+  DEFAULT_BUDGET, addDays, daysBetween, mondayOf, shopCat, shortDate, stockStatus, todayStr,
   type NewListItem, type ShoppingItem, type ShoppingList, type ShoppingListItem,
 } from "@/lib/shopping";
 import AppShell from "@/components/AppShell";
@@ -33,7 +33,6 @@ export default function ShoppingPage() {
   const [history, setHistory] = useState<ShoppingList[]>([]);
   const [monthCats, setMonthCats] = useState<Record<string, number>>({});
   const [toast, setToast] = useState("");
-  const { categories } = useCategories();
 
   function showToast(msg: string) {
     setToast(msg);
@@ -49,7 +48,8 @@ export default function ShoppingPage() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
     const [listRes, fixedRes, histRes, monthRes] = await Promise.all([
-      supabase.from("shopping_lists").select("*").eq("user_id", user.id).eq("week_start", weekStart).maybeSingle(),
+      supabase.from("shopping_lists").select("*").eq("user_id", user.id).eq("week_start", weekStart)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("shopping_items").select("*").eq("user_id", user.id)
         .order("position", { ascending: true, nullsFirst: false }).order("created_at"),
       supabase.from("shopping_lists").select("*").eq("user_id", user.id).eq("status", "done")
@@ -104,7 +104,8 @@ export default function ShoppingPage() {
 
     // orcamento herdado da lista mais recente
     const { data: last } = await supabase.from("shopping_lists").select("id, budget")
-      .eq("user_id", uid).lt("week_start", weekStart).order("week_start", { ascending: false }).limit(1).maybeSingle();
+      .eq("user_id", uid).lt("week_start", weekStart).order("week_start", { ascending: false })
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
     const { data: created, error } = await supabase.from("shopping_lists")
       .insert({ user_id: uid, week_start: weekStart, budget: last ? Number(last.budget) : DEFAULT_BUDGET })
@@ -181,26 +182,52 @@ export default function ShoppingPage() {
     await supabase.from("shopping_lists").update({ budget: v }).eq("id", list.id);
   }
 
-  async function finish(categoryName: string) {
+  async function finish() {
     if (!list || list.status === "done") return;
     const supabase = createClient();
     const uid = await getUserId();
     if (!uid) return;
 
     const done = items.filter((i) => i.checked);
-    const total = Math.round(done.reduce((s, i) => s + (i.price ?? 0), 0) * 100) / 100;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+
+    // uma despesa por categoria de mercado (higiene, carnes, mercearia...), sem perguntar
+    const byCat = new Map<string, number>();
+    done.forEach((i) => byCat.set(i.category, r2((byCat.get(i.category) || 0) + (i.price ?? 0))));
+    const parts = Array.from(byCat.entries()).filter(([, v]) => v > 0)
+      .map(([shop, amount]) => {
+        const c = shopCat(shop);
+        return { shop, amount, label: c.label, name: categoryKey(c.label), color: c.color };
+      });
+    const total = r2(parts.reduce((s, p) => s + p.amount, 0));
     if (total <= 0) { showToast("Informe o preço dos itens comprados"); return; }
 
-    const { data: tx, error } = await supabase.from("transactions").insert({
-      user_id: uid,
-      description: `Compras da semana ${shortDate(list.week_start)}`,
-      amount: -total,
-      category: categoryName,
-      date: todayStr(),
-      type: "expense",
-      status: "completed",
-    }).select("id").single();
-    if (error || !tx) { showToast("Erro ao lançar despesa: " + (error?.message || "")); return; }
+    // categoria do app com o mesmo nome (ex.: "higiene"); se não existir, é criada
+    const { data: existing } = await supabase.from("categories").select("name")
+      .eq("user_id", uid).in("name", parts.map((p) => p.name));
+    const have = new Set((existing || []).map((e) => e.name as string));
+    const missing = parts.filter((p) => !have.has(p.name));
+    if (missing.length > 0) {
+      const { error: cErr } = await supabase.from("categories").upsert(
+        missing.map((p) => ({ user_id: uid, name: p.name, color: p.color, icon: "📦" })),
+        { onConflict: "user_id,name", ignoreDuplicates: true },
+      );
+      if (cErr) { showToast("Erro ao criar categorias: " + cErr.message); return; }
+    }
+
+    const { data: txs, error } = await supabase.from("transactions").insert(
+      parts.map((p) => ({
+        user_id: uid,
+        description: `Compras da semana ${shortDate(list.week_start)} · ${p.label}`,
+        amount: -p.amount,
+        category: p.name,
+        date: todayStr(),
+        type: "expense",
+        status: "completed",
+      })),
+    ).select("id");
+    if (error || !txs || txs.length === 0) { showToast("Erro ao lançar despesa: " + (error?.message || "")); return; }
+    const tx = txs[0];
 
     await supabase.from("shopping_lists").update({
       status: "done", total, transaction_id: tx.id, finished_at: new Date().toISOString(),
@@ -245,7 +272,43 @@ export default function ShoppingPage() {
       (firstCalc > 0 ? ` · ${firstCalc} ${firstCalc === 1 ? "duração calculada" : "durações calculadas"} pela 2ª compra` : "") +
       (learned > 0 ? ` · ${learned} ${learned === 1 ? "duração ajustada" : "durações ajustadas"} pelo seu histórico` : "");
     window.dispatchEvent(new Event("finapp:stock-changed"));
-    showToast((walletOk ? "Despesa lançada em Transações ✓" : "Despesa lançada, mas o saldo não foi atualizado") + learnedMsg);
+    const launched = parts.length === 1 ? "Despesa lançada" : `${parts.length} despesas lançadas (uma por categoria)`;
+    showToast((walletOk ? `${launched} em Transações ✓` : `${launched}, mas o saldo não foi atualizado`) + learnedMsg);
+    load();
+  }
+
+  // Nova compra na mesma semana, depois de finalizar a anterior:
+  // abre outra lista com o que sobrou e o orçamento que restou da semana.
+  async function newPurchase() {
+    if (!list || list.status !== "done") return;
+    const supabase = createClient();
+    const uid = await getUserId();
+    if (!uid) return;
+
+    const { data: weekLists } = await supabase.from("shopping_lists").select("budget, total, status")
+      .eq("user_id", uid).eq("week_start", list.week_start).order("created_at", { ascending: true });
+    const rows = weekLists || [];
+    const weekBudget = rows.length > 0 ? Number(rows[0].budget) : list.budget;
+    const spent = rows.filter((l) => l.status === "done").reduce((s, l) => s + Number(l.total ?? 0), 0);
+    const remaining = Math.max(Math.round((weekBudget - spent) * 100) / 100, 0);
+
+    const { data: created, error } = await supabase.from("shopping_lists")
+      .insert({ user_id: uid, week_start: list.week_start, budget: remaining }).select().single();
+    if (error || !created) {
+      showToast(error?.code === "23505"
+        ? "Falta liberar mais de uma compra por semana (migração 011 no Supabase)"
+        : "Não foi possível abrir a nova compra");
+      return;
+    }
+
+    // o que não foi comprado na lista anterior continua na nova
+    const left = items.filter((i) => !i.checked).map((i, idx) => ({
+      list_id: created.id, user_id: uid, item_id: i.item_id, name: i.name, qty: i.qty, category: i.category,
+      estimated_price: i.estimated_price, hint: "Sobrou da compra anterior", position: idx,
+    }));
+    if (left.length > 0) await supabase.from("shopping_list_items").insert(left);
+
+    showToast(`Nova compra aberta · orçamento restante ${remaining.toFixed(2).replace(".", ",")}`);
     load();
   }
 
@@ -302,7 +365,6 @@ export default function ShoppingPage() {
   }
 
   const stockAlerts = useStockAlerts();
-  const expenseCategories = categories.filter((c) => c.name !== "salario" && c.name !== "investimento");
   const isCurrentWeek = weekStart === mondayOf();
 
   return (
@@ -362,9 +424,9 @@ export default function ShoppingPage() {
           {tab === "semana" && (
             <WeekTab
               list={list} items={items} weekStart={weekStart} isCurrentWeek={isCurrentWeek}
-              hasFixed={fixed.length > 0} expenseCategories={expenseCategories}
+              hasFixed={fixed.length > 0}
               onGenerate={generateList} onSaveItem={saveItem} onRemoveItem={removeItem}
-              onAddAvulso={addAvulso} onBudget={setBudget} onFinish={finish}
+              onAddAvulso={addAvulso} onBudget={setBudget} onFinish={finish} onNewPurchase={newPurchase}
               inStock={fixed.filter((f) => f.duration_days && !items.some((i) => i.item_id === f.id))}
               weekStartForStock={weekStart} onAddFromStock={addFromStock}
             />
