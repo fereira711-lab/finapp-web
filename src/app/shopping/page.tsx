@@ -35,6 +35,17 @@ export default function ShoppingPage() {
   const [monthCats, setMonthCats] = useState<Record<string, number>>({});
   const [toast, setToast] = useState("");
   const [showVoice, setShowVoice] = useState(false);
+  const [voiceText, setVoiceText] = useState("");
+
+  // Atalho da Siri: /shopping?voz=frase abre o "Falar" ja interpretando a compra
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("voz");
+    if (q && q.trim()) {
+      setVoiceText(q.trim().slice(0, 300));
+      setShowVoice(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -410,7 +421,7 @@ export default function ShoppingPage() {
               <ShoppingCart size={18} className="text-[#6366F1]" />
               <h1 className="text-lg font-bold">Compras</h1>
               {isCurrentWeek && (
-                <button onClick={() => setShowVoice(true)} aria-label="Falar item comprado"
+                <button onClick={() => { setVoiceText(""); setShowVoice(true); }} aria-label="Falar item comprado"
                   className="ml-1 glass-btn-active flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium">
                   <Mic size={14} /> Falar
                 </button>
@@ -477,6 +488,7 @@ export default function ShoppingPage() {
           {showVoice && (
             <VoiceEntryModal
               mode="shopping"
+              initialText={voiceText}
               onClose={() => setShowVoice(false)}
               onSaved={() => { showToast("Item marcado como comprado ✓"); load(); }}
               onEntry={() => setShowVoice(false)}
