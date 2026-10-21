@@ -40,7 +40,8 @@ export default function ShoppingPage() {
   // Atalho da Siri: /shopping?voz=frase abre o "Falar" ja interpretando a compra
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("voz");
-    if (q && q.trim()) {
+    // abre mesmo com a frase vazia (Atalho sem texto): o usuario fala/digita na tela
+    if (q !== null) {
       setVoiceText(q.trim().slice(0, 300));
       setShowVoice(true);
       window.history.replaceState(null, "", window.location.pathname);

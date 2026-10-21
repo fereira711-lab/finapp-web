@@ -358,7 +358,7 @@ export default function DashboardPage() {
   // Atalho da Siri: abre o app em /?voz=frase e ja interpreta
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("voz");
-    if (q && q.trim()) {
+    if (q !== null) {
       openVoice(q.trim().slice(0, 300));
       window.history.replaceState(null, "", window.location.pathname);
     }
