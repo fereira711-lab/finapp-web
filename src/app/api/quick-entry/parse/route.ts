@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     const text = typeof body?.text === "string" ? body.text.trim().slice(0, 300) : "";
     if (!text) return NextResponse.json({ error: "Fale ou digite o que você gastou." }, { status: 400 });
 
+    const forceShopping = body?.context === "shopping";
     const today = brToday();
     const [y, m, d] = today.split("-").map(Number);
     const weekStart = mondayOf(new Date(y, m - 1, d));
@@ -41,7 +42,13 @@ export async function POST(req: NextRequest) {
       openList = { id: listRes.data.id as string, items: (items || []).map((i) => ({ id: i.id as string, name: i.name as string })) };
     }
 
-    const ctx: ParseContext = { today, categories, cards, openList };
+    if (forceShopping && !openList) {
+      return NextResponse.json(
+        { error: "Não há lista de compras aberta nesta semana. Gere a lista (ou toque em Nova compra) e tente de novo." },
+        { status: 409 },
+      );
+    }
+    const ctx: ParseContext = { today, categories, cards, openList, forceShopping };
 
     const system =
       "Você converte UMA frase falada em português do Brasil em UM lançamento financeiro. Responda APENAS com JSON.\n" +
@@ -55,6 +62,9 @@ export async function POST(req: NextRequest) {
       '- installments só para cartão ("em 3x", "parcelei em 3 vezes"); senão 1.\n' +
       '- shopping só quando a frase diz que comprou um item que está na LISTA DA SEMANA abaixo; gastos gerais como "gastei 80 no mercado" são expense.\n' +
       '- amount é o valor TOTAL em reais; converta números por extenso ("quarenta e cinco" = 45; "45 e 90" = 45.90).\n' +
+      (forceShopping
+        ? '- CONTEXTO: o usuário está na tela de Compras. SEMPRE kind=shopping: é a compra de UM item. description = só o nome do item (sem o valor); amount = quanto pagou; escolha shopping_category.\n'
+        : "") +
       `Categorias (chaves): ${categories.map((c) => c.name).join(", ") || "outros"}\n` +
       `Cartões: ${cards.map((c) => c.name).join(", ") || "nenhum"}\n` +
       `Lista da semana (ainda não comprados): ${openList && openList.items.length > 0 ? openList.items.map((i) => i.name).join(", ") : "nenhuma"}\n` +

@@ -33,6 +33,8 @@ export interface ParseContext {
   cards: { id: string; name: string }[];
   /** lista de compras aberta da semana (itens ainda nao comprados) */
   openList: { id: string; items: { id: string; name: string }[] } | null;
+  /** tela de Compras: toda frase e compra de item da lista (nunca gasto geral/receita) */
+  forceShopping?: boolean;
 }
 
 /** Data de hoje em Brasilia (YYYY-MM-DD), independente do fuso do servidor. */
@@ -92,7 +94,8 @@ export function buildDraft(raw: Record<string, unknown> | null, ctx: ParseContex
   const amount = toAmount(raw.amount);
   if (amount == null) return null;
 
-  let kind: EntryKind = raw.kind === "income" ? "income" : raw.kind === "shopping" ? "shopping" : "expense";
+  let kind: EntryKind = ctx.forceShopping ? "shopping"
+    : raw.kind === "income" ? "income" : raw.kind === "shopping" ? "shopping" : "expense";
   let note: string | undefined;
 
   const rawDesc = typeof raw.description === "string" ? raw.description.trim().slice(0, 80) : "";

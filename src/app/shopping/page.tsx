@@ -14,7 +14,8 @@ import WeekTab from "@/components/shopping/WeekTab";
 import FixedTab from "@/components/shopping/FixedTab";
 import HistoryTab from "@/components/shopping/HistoryTab";
 import { useStockAlerts, daysLeftLabel } from "@/lib/useStockAlerts";
-import { AlertTriangle, ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
+import VoiceEntryModal from "@/components/dashboard/VoiceEntryModal";
+import { AlertTriangle, ShoppingCart, ChevronLeft, ChevronRight, Mic } from "lucide-react";
 
 type Tab = "semana" | "fixos" | "hist";
 const TABS: { key: Tab; label: string }[] = [
@@ -33,6 +34,7 @@ export default function ShoppingPage() {
   const [history, setHistory] = useState<ShoppingList[]>([]);
   const [monthCats, setMonthCats] = useState<Record<string, number>>({});
   const [toast, setToast] = useState("");
+  const [showVoice, setShowVoice] = useState(false);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -407,6 +409,12 @@ export default function ShoppingPage() {
             <div className="flex items-center gap-2">
               <ShoppingCart size={18} className="text-[#6366F1]" />
               <h1 className="text-lg font-bold">Compras</h1>
+              {isCurrentWeek && (
+                <button onClick={() => setShowVoice(true)} aria-label="Falar item comprado"
+                  className="ml-1 glass-btn-active flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium">
+                  <Mic size={14} /> Falar
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1 text-xs">
               <button onClick={() => { setLoading(true); setWeekStart(addDays(weekStart, -7)); }}
@@ -465,6 +473,15 @@ export default function ShoppingPage() {
               onReorder={reorderFixed} onApplyDurations={applyDurations} />
           )}
           {tab === "hist" && <HistoryTab history={history} monthCats={monthCats} />}
+
+          {showVoice && (
+            <VoiceEntryModal
+              mode="shopping"
+              onClose={() => setShowVoice(false)}
+              onSaved={() => { showToast("Item marcado como comprado ✓"); load(); }}
+              onEntry={() => setShowVoice(false)}
+            />
+          )}
 
           {toast && (
             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">

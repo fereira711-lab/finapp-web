@@ -241,7 +241,7 @@ export default function QuickAddModal({ open, prefill, onClose, onAdded, cards }
               placeholder="Ex: Mercado, Uber, Salário..." />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="min-w-0">
               <label className="label-upper block mb-1">Valor</label>
               <input required type="number" step="0.01" min="0.01" value={amount}

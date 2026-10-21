@@ -11,6 +11,10 @@ interface Props {
   /** frase ja pronta (ex.: vinda do Atalho da Siri): interpreta ao abrir */
   initialText?: string;
   onClose: () => void;
+  /** "shopping": usado na tela de Compras; toda frase vira compra de item da lista */
+  mode?: "general" | "shopping";
+  /** depois de marcar/adicionar um item da lista de compras */
+  onSaved?: () => void;
   /** gasto/receita: o Lançamento Rápido abre preenchido para conferir e salvar */
   onEntry: (draft: EntryDraft, note?: string) => void;
 }
@@ -33,7 +37,7 @@ function getRecognitionCtor(): RecognitionCtor | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
-export default function VoiceEntryModal({ initialText = "", onClose, onEntry }: Props) {
+export default function VoiceEntryModal({ initialText = "", onClose, onEntry, mode = "general", onSaved }: Props) {
   const [text, setText] = useState(initialText);
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -53,7 +57,7 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry }: 
     try {
       const res = await fetch("/api/quick-entry/parse", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: t }),
+        body: JSON.stringify({ text: t, context: mode }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Não consegui interpretar."); setBusy(false); return; }
@@ -68,7 +72,7 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry }: 
       setError("Erro de conexão. Tente de novo.");
       setBusy(false);
     }
-  }, [onEntry]);
+  }, [onEntry, mode]);
 
   // frase vinda do Atalho: interpreta uma vez ao abrir
   const autoRan = useRef(false);
@@ -138,6 +142,7 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry }: 
     setSaving(false);
     if (err) { setError("Erro ao salvar: " + err.message); return; }
     window.dispatchEvent(new Event("finapp:data-changed"));
+    onSaved?.();
     onClose();
   }
 
@@ -161,8 +166,10 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry }: 
         {!shopping ? (
           <>
             <p className="text-xs text-white/45">
-              Diga ou digite, por exemplo: &quot;gastei 45 no mercado&quot;, &quot;300 no cartão Nubank em 3x&quot;,
-              &quot;recebi 600 do cliente&quot; ou &quot;comprei arroz por 28&quot;. Você confere antes de salvar.
+              {mode === "shopping"
+                ? <>Diga o item e quanto pagou, por exemplo: &quot;sabonete 9&quot; ou &quot;comprei arroz por 28&quot;. Ele entra na lista da semana já como comprado.</>
+                : <>Diga ou digite, por exemplo: &quot;gastei 45 no mercado&quot;, &quot;300 no cartão Nubank em 3x&quot;,
+                  &quot;recebi 600 do cliente&quot; ou &quot;comprei arroz por 28&quot;. Você confere antes de salvar.</>}
             </p>
 
             {supported && (
@@ -216,9 +223,11 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry }: 
               className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
               {saving ? "Salvando..." : "Marcar como comprado"}
             </button>
-            <button type="button" onClick={asExpense} disabled={saving} className="w-full text-white/45 text-xs py-1 hover:text-white">
-              Não é da lista? Registrar como gasto
-            </button>
+            {mode === "general" && (
+              <button type="button" onClick={asExpense} disabled={saving} className="w-full text-white/45 text-xs py-1 hover:text-white">
+                Não é da lista? Registrar como gasto
+              </button>
+            )}
           </>
         )}
       </div>
