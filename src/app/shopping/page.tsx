@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { updateWalletBalance } from "@/lib/wallet";
 import { categoryKey } from "@/lib/useCategories";
@@ -102,6 +102,11 @@ export default function ShoppingPage() {
     const uid = await getUserId();
     if (!uid) return;
 
+    // com varias compras por semana permitidas, evita criar lista repetida por toque duplo
+    const { data: already } = await supabase.from("shopping_lists").select("id")
+      .eq("user_id", uid).eq("week_start", weekStart).limit(1);
+    if (already && already.length > 0) { load(); return; }
+
     // orcamento herdado da lista mais recente
     const { data: last } = await supabase.from("shopping_lists").select("id, budget")
       .eq("user_id", uid).lt("week_start", weekStart).order("week_start", { ascending: false })
@@ -154,8 +159,18 @@ export default function ShoppingPage() {
     await supabase.from("shopping_list_items").delete().eq("id", id);
   }
 
+  const addingAvulso = useRef(false);
   async function addAvulso(n: NewListItem) {
-    if (!list) return;
+    if (!list || addingAvulso.current) return;
+    addingAvulso.current = true;
+    try {
+      await addAvulsoNow(n, list);
+    } finally {
+      addingAvulso.current = false;
+    }
+  }
+
+  async function addAvulsoNow(n: NewListItem, list: ShoppingList) {
     const supabase = createClient();
     const uid = await getUserId();
     if (!uid) return;
@@ -326,18 +341,32 @@ export default function ShoppingPage() {
     load();
   }
 
+  // Toques repetidos em "+ Adicionar" (a tela demora a atualizar no celular) criavam o mesmo item várias vezes:
+  // trava por item e mostra o item na lista na hora, sem esperar o recarregamento.
+  const addingIds = useRef<Set<string>>(new Set());
   async function addFromStock(f: ShoppingItem) {
     if (!list || list.status === "done") return;
-    const supabase = createClient();
-    const uid = await getUserId();
-    if (!uid) return;
-    const st = stockStatus(f, weekStart);
-    await supabase.from("shopping_list_items").insert({
-      list_id: list.id, user_id: uid, item_id: f.id, name: f.name, qty: f.qty, category: f.category,
-      estimated_price: f.estimated_price, hint: st.hint ? `Adicionado antes da hora · ${st.hint.toLowerCase()}` : null,
-      position: items.length,
-    });
-    load();
+    if (addingIds.current.has(f.id) || items.some((i) => i.item_id === f.id)) return;
+    addingIds.current.add(f.id);
+    try {
+      const supabase = createClient();
+      const uid = await getUserId();
+      if (!uid) return;
+      const st = stockStatus(f, weekStart);
+      const { data, error } = await supabase.from("shopping_list_items").insert({
+        list_id: list.id, user_id: uid, item_id: f.id, name: f.name, qty: f.qty, category: f.category,
+        estimated_price: f.estimated_price, hint: st.hint ? `Adicionado antes da hora · ${st.hint.toLowerCase()}` : null,
+        position: items.length,
+      }).select().single();
+      if (error || !data) { showToast("Não foi possível adicionar o item"); return; }
+      const row = data as ShoppingListItem;
+      setItems((prev) => prev.some((i) => i.id === row.id) ? prev : [
+        ...prev, { ...row, estimated_price: Number(row.estimated_price), price: row.price == null ? null : Number(row.price) },
+      ]);
+      load();
+    } finally {
+      addingIds.current.delete(f.id);
+    }
   }
 
   async function applyDurations(updates: { id: string; days: number }[]) {
