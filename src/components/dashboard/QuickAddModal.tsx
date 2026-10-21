@@ -242,16 +242,16 @@ export default function QuickAddModal({ open, prefill, onClose, onAdded, cards }
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className="min-w-0">
               <label className="label-upper block mb-1">Valor</label>
               <input required type="number" step="0.01" min="0.01" value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full glass-input px-3 py-3 text-base text-white" placeholder="0,00" />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="label-upper block mb-1">Data</label>
               <input required type="date" value={date} onChange={(e) => setDate(e.target.value)}
-                className="w-full glass-input px-3 py-3 text-base text-white" />
+                className="w-full min-w-0 max-w-full glass-input px-3 py-3 text-base text-white" />
             </div>
           </div>
 

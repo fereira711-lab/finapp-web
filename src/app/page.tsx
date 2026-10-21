@@ -338,7 +338,8 @@ export default function DashboardPage() {
   }
 
   // rascunho vindo do registro por voz: abre o Lançamento Rápido preenchido para conferir
-  function handleVoiceEntry(d: EntryDraft) {
+  function handleVoiceEntry(d: EntryDraft, note?: string) {
+    if (note) showDelToast(note);
     setPrefill({
       type: d.kind === "income" ? "income" : "expense",
       method: d.method,
