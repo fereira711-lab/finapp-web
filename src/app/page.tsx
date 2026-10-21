@@ -17,12 +17,14 @@ import type { Transaction, Bill } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
 import { DashboardSkeleton } from "@/components/Skeleton";
-import QuickAddModal from "@/components/dashboard/QuickAddModal";
+import QuickAddModal, { type QuickAddPrefill } from "@/components/dashboard/QuickAddModal";
+import VoiceEntryModal from "@/components/dashboard/VoiceEntryModal";
+import type { EntryDraft } from "@/lib/quickEntry";
 import ChoresSection from "@/components/dashboard/ChoresSection";
 import ShoppingSection from "@/components/dashboard/ShoppingSection";
 import {
   Wallet, FileText, Calculator,
-  CreditCard, ArrowUpRight, ArrowDownRight, Plus, Trash2,
+  CreditCard, ArrowUpRight, ArrowDownRight, Plus, Trash2, Mic,
 } from "lucide-react";
 import { updateWalletBalance } from "@/lib/wallet";
 import {
@@ -77,6 +79,12 @@ export default function DashboardPage() {
     id: string; name: string; color: string; status: string; closing_day: number; due_day: number;
   }>>([]);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  // Registro por voz/texto: a IA preenche o Lançamento Rápido e o usuario confere
+  const [showVoice, setShowVoice] = useState(false);
+  const [voiceKey, setVoiceKey] = useState(0);
+  const [voiceText, setVoiceText] = useState("");
+  const [prefill, setPrefill] = useState<QuickAddPrefill | null>(null);
+  const [quickKey, setQuickKey] = useState(0);
 
   // Delete confirmation (linha de Ultimas Transacoes)
   const [deleteRow, setDeleteRow] = useState<RecentTxRow | null>(null);
@@ -315,6 +323,44 @@ export default function DashboardPage() {
       window.removeEventListener("finapp:data-changed", onChange);
       document.removeEventListener("visibilitychange", onVisibility);
     };
+  }, []);
+
+  function openVoice(text = "") {
+    setVoiceText(text);
+    setVoiceKey((k) => k + 1);
+    setShowVoice(true);
+  }
+
+  function openQuickAdd() {
+    setPrefill(null);
+    setQuickKey((k) => k + 1);
+    setShowQuickAdd(true);
+  }
+
+  // rascunho vindo do registro por voz: abre o Lançamento Rápido preenchido para conferir
+  function handleVoiceEntry(d: EntryDraft) {
+    setPrefill({
+      type: d.kind === "income" ? "income" : "expense",
+      method: d.method,
+      cardId: d.cardId ?? cardsForQuickAdd[0]?.id ?? "",
+      desc: d.description,
+      amount: String(d.amount),
+      date: d.date,
+      category: d.category,
+      installments: d.installments,
+    });
+    setQuickKey((k) => k + 1);
+    setShowVoice(false);
+    setShowQuickAdd(true);
+  }
+
+  // Atalho da Siri: abre o app em /?voz=frase e ja interpreta
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("voz");
+    if (q && q.trim()) {
+      openVoice(q.trim().slice(0, 300));
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
 
   const tooltipStyle = {
@@ -730,9 +776,19 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ── FAB: Falar e registrar (IA) ── */}
+      <button
+        onClick={() => openVoice()}
+        className="fixed bottom-36 right-5 md:bottom-24 md:right-7 z-40 w-12 h-12 rounded-full glass-btn-active text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+        title="Falar e registrar"
+        aria-label="Falar e registrar"
+      >
+        <Mic size={22} />
+      </button>
+
       {/* ── FAB: Novo gasto rapido ── */}
       <button
-        onClick={() => setShowQuickAdd(true)}
+        onClick={openQuickAdd}
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 rounded-full bg-[#6366F1] hover:bg-[#4F46E5] text-white shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
         title="Novo lançamento"
         aria-label="Novo lançamento"
@@ -805,8 +861,19 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {showVoice && (
+        <VoiceEntryModal
+          key={voiceKey}
+          initialText={voiceText}
+          onClose={() => setShowVoice(false)}
+          onEntry={handleVoiceEntry}
+        />
+      )}
+
       <QuickAddModal
+        key={quickKey}
         open={showQuickAdd}
+        prefill={prefill}
         onClose={() => setShowQuickAdd(false)}
         onAdded={loadDashboard}
         cards={cardsForQuickAdd}

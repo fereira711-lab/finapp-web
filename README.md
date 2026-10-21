@@ -41,6 +41,8 @@ Centralizar saldo, transacoes, agenda financeira, cartoes, metas, relatorios e a
 - `src/app/api/ai-chat/route.ts`
 - `src/app/api/auth/callback/route.ts`
 - `src/app/api/notifications/check/route.ts`
+- `src/app/api/shopping/suggest-duration/route.ts` (sessao; so le; chama a IA da NVIDIA)
+- `src/app/api/quick-entry/parse/route.ts` (sessao; so interpreta a frase e devolve rascunho, nao grava; chama a IA da NVIDIA)
 
 ## Como rodar
 

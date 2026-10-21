@@ -62,6 +62,7 @@ Consolidar o `finapp-web` como aplicacao financeira pessoal com boa base documen
 - modelo Anthropic atualizado para claude-sonnet-4-6
 - filtro "Todas" em /transactions, alcancando transacoes fora de 3 meses
 - dashboard recarrega apos mutacoes em outras telas
+- registro por voz/texto com IA ("Falar e registrar" no dashboard e atalho da Siri via /?voz=): a IA preenche o Lancamento Rapido e o usuario confere antes de salvar
 
 ## Pendencias abertas
 

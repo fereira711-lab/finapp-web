@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, CreditCard, Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/format";
@@ -18,25 +18,43 @@ export type QuickAddCard = {
   due_day: number;
 };
 
+/** Valores iniciais (ex.: vindos do registro por voz); o usuario confere e salva. */
+export type QuickAddPrefill = {
+  type: "expense" | "income";
+  method: "pix" | "card";
+  cardId: string;
+  desc: string;
+  amount: string;
+  date: string;
+  category: string;
+  installments: number;
+};
+
 interface QuickAddModalProps {
   open: boolean;
+  prefill?: QuickAddPrefill | null;
   onClose: () => void;
   onAdded: () => void;
   cards: QuickAddCard[];
 }
 
-export default function QuickAddModal({ open, onClose, onAdded, cards }: QuickAddModalProps) {
+export default function QuickAddModal({ open, prefill, onClose, onAdded, cards }: QuickAddModalProps) {
   const { categories: catList } = useCategories();
   const [saving, setSaving] = useState(false);
-  const [type, setType] = useState<"expense" | "income">("expense");
-  const [method, setMethod] = useState<"pix" | "card">("pix");
-  const [cardId, setCardId] = useState("");
-  const [desc, setDesc] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [category, setCategory] = useState("outros");
-  const [installments, setInstallments] = useState(false);
-  const [numInstallments, setNumInstallments] = useState("2");
+  const [type, setType] = useState<"expense" | "income">(prefill?.type ?? "expense");
+  const [method, setMethod] = useState<"pix" | "card">(prefill?.method ?? "pix");
+  const [cardId, setCardId] = useState(prefill?.cardId ?? "");
+  const [desc, setDesc] = useState(prefill?.desc ?? "");
+  const [amount, setAmount] = useState(prefill?.amount ?? "");
+  const [date, setDate] = useState(prefill?.date ?? new Date().toISOString().split("T")[0]);
+  const [category, setCategory] = useState(prefill?.category ?? "outros");
+  const [installments, setInstallments] = useState((prefill?.installments ?? 1) > 1);
+  const [numInstallments, setNumInstallments] = useState(String(Math.max(prefill?.installments ?? 2, 2)));
+
+  // cartao escolhido mas ainda sem id (cartoes carregam depois): usa o primeiro, como o seletor mostra
+  useEffect(() => {
+    if (method === "card" && !cardId && cards.length > 0) setCardId(cards[0].id);
+  }, [method, cardId, cards]);
   const [toast, setToast] = useState<string | null>(null);
 
   function showToast(msg: string) {
