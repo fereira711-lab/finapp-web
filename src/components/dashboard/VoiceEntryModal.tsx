@@ -169,22 +169,33 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry, mo
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaving(false); return; }
-    let failed = "";
+    // Tudo ou nada: primeiro monta os itens novos e insere de uma vez so (se falhar, nada e gravado
+    // e uma nova tentativa nao duplica); so depois marca os que ja estavam na lista.
+    const toInsert: Record<string, unknown>[] = [];
+    const toCheck: { id: string; price: number }[] = [];
     for (const r of valid) {
       const price = parsePrice(r.price);
-      let err: { message: string } | null = null;
       if (r.listItemId) {
         // ja esta na lista: com valor marca como comprado; sem valor nao ha nada a fazer
-        if (price > 0) ({ error: err } = await supabase.from("shopping_list_items")
-          .update({ checked: true, price }).eq("id", r.listItemId));
+        if (price > 0) toCheck.push({ id: r.listItemId, price });
       } else {
-        ({ error: err } = await supabase.from("shopping_list_items").insert({
+        toInsert.push({
           list_id: rowsListId, user_id: user.id, item_id: null, name: r.name.trim(), qty: "1 un",
-          category: r.shopCategory, estimated_price: price > 0 ? price : null,
+          category: r.shopCategory, estimated_price: price, // a coluna nao aceita nulo: 0 = sem valor
           price: price > 0 ? price : null, checked: price > 0, position: 999,
-        }));
+        });
       }
-      if (err) { failed = err.message; break; }
+    }
+    let failed = "";
+    if (toInsert.length > 0) {
+      const { error } = await supabase.from("shopping_list_items").insert(toInsert);
+      if (error) failed = error.message;
+    }
+    for (const c of toCheck) {
+      if (failed) break;
+      const { error } = await supabase.from("shopping_list_items")
+        .update({ checked: true, price: c.price }).eq("id", c.id);
+      if (error) failed = error.message;
     }
     setSaving(false);
     if (failed) { setError("Erro ao salvar: " + failed); return; }
