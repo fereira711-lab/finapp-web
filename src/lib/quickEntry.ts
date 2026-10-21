@@ -141,3 +141,51 @@ export function buildDraft(raw: Record<string, unknown> | null, ctx: ParseContex
     note,
   };
 }
+
+/** Um item citado na tela de Compras: com valor = comprado agora; sem valor = so entra na lista. */
+export interface ShopItemDraft {
+  name: string;
+  /** valor pago; null = ainda nao comprado (so adicionar a lista) */
+  amount: number | null;
+  shopCategory: string;
+  /** item que ja esta na lista da semana (ainda nao comprado) */
+  listItemId: string | null;
+}
+
+export interface ShoppingParseResponse {
+  listId: string;
+  items: ShopItemDraft[];
+}
+
+/**
+ * Tela de Compras: valida a lista de itens que a IA devolveu.
+ * Aceita {"items":[...]} ou direto [...]. Devolve null se nao houver nenhum item aproveitavel.
+ */
+export function buildShoppingItems(raw: unknown, ctx: ParseContext): ShoppingParseResponse | null {
+  if (!ctx.openList) return null;
+  const arr = Array.isArray(raw) ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { items?: unknown }).items)
+      ? (raw as { items: unknown[] }).items : null;
+  if (!arr) return null;
+
+  const items: ShopItemDraft[] = [];
+  const used = new Set<string>();
+  for (const r of arr.slice(0, 15)) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    const nameRaw = typeof o.name === "string" ? o.name : typeof o.description === "string" ? o.description : "";
+    const t = nameRaw.trim().slice(0, 80);
+    if (!t) continue;
+    const name = t.charAt(0).toUpperCase() + t.slice(1);
+    const amount = o.amount == null || o.amount === "" ? null : toAmount(o.amount);
+    const shopRaw = typeof o.shopping_category === "string" ? o.shopping_category.trim() : "";
+    const shopCategory = shopRaw in SHOP_CATEGORIES ? shopRaw : "outros";
+
+    // cada item da lista so pode ser usado uma vez na mesma frase
+    const free = ctx.openList.items.filter((i) => !used.has(i.id));
+    const found = matchByName(name, free);
+    if (found) used.add(found.id);
+    items.push({ name: found ? found.name : name, amount, shopCategory, listItemId: found ? found.id : null });
+  }
+  return items.length > 0 ? { listId: ctx.openList.id, items } : null;
+}

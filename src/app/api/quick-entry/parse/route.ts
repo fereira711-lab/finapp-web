@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { NvidiaNotConfiguredError, extractJson, nvidiaChat } from "@/lib/ai/nvidia";
 import { SHOP_CATEGORIES, mondayOf } from "@/lib/shopping";
-import { brToday, buildDraft, type ParseContext } from "@/lib/quickEntry";
+import { brToday, buildDraft, buildShoppingItems, type ParseContext } from "@/lib/quickEntry";
 
 // So INTERPRETA a frase e devolve um rascunho. Nada e gravado aqui:
 // quem grava e o app, depois que o usuario confere e confirma.
@@ -49,6 +49,29 @@ export async function POST(req: NextRequest) {
       );
     }
     const ctx: ParseContext = { today, categories, cards, openList, forceShopping };
+
+    // Tela de Compras: a frase pode citar VARIOS itens (comprados ou so para a lista)
+    if (forceShopping) {
+      const shopSystem =
+        "Você converte uma frase falada em português do Brasil numa lista de itens de supermercado. Responda APENAS com JSON.\n" +
+        'Formato: {"items":[{"name":"<só o nome do item>","amount":<valor pago em reais ou null>,"shopping_category":"<chave>"}]}\n' +
+        "Regras:\n" +
+        "- Um objeto por item citado. Separadores: vírgula, \"e\", \"mais\".\n" +
+        "- amount = quanto foi PAGO por aquele item (\"sabonete 9\", \"arroz por 28\", \"quarenta e cinco\" = 45; \"45 e 90\" = 45.90).\n" +
+        "- Item sem valor (\"leite e ovos na lista\", \"preciso de café\") = amount null: só vai para a lista, ainda não foi comprado.\n" +
+        "- name sem o valor, sem verbos (\"comprei\", \"coloca\") e sem \"na lista\".\n" +
+        `Lista da semana (ainda não comprados): ${openList && openList.items.length > 0 ? openList.items.map((i) => i.name).join(", ") : "nenhuma"}\n` +
+        `Chaves (shopping_category): ${Object.keys(SHOP_CATEGORIES).join(", ")}`;
+      const shopAnswer = await nvidiaChat(
+        [{ role: "system", content: shopSystem }, { role: "user", content: text }],
+        { maxTokens: 900, temperature: 0.1, timeoutMs: 20000 },
+      );
+      const shop = buildShoppingItems(extractJson<unknown>(shopAnswer), ctx);
+      if (!shop) {
+        return NextResponse.json({ error: "Não entendi os itens. Tente de novo, ex.: \"sabonete 9, arroz 28\"." }, { status: 422 });
+      }
+      return NextResponse.json({ shopping: shop });
+    }
 
     const system =
       "Você converte UMA frase falada em português do Brasil em UM lançamento financeiro. Responda APENAS com JSON.\n" +

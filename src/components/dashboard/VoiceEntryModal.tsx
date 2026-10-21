@@ -5,7 +5,7 @@ import { Mic, MicOff, Sparkles, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/format";
 import { parsePrice, priceToText, shopCat } from "@/lib/shopping";
-import type { EntryDraft, ParseResponse } from "@/lib/quickEntry";
+import type { EntryDraft, ParseResponse, ShoppingParseResponse } from "@/lib/quickEntry";
 
 interface Props {
   /** frase ja pronta (ex.: vinda do Atalho da Siri): interpreta ao abrir */
@@ -37,6 +37,8 @@ function getRecognitionCtor(): RecognitionCtor | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
+interface ShopRow { key: number; name: string; price: string; shopCategory: string; listItemId: string | null }
+
 export default function VoiceEntryModal({ initialText = "", onClose, onEntry, mode = "general", onSaved }: Props) {
   const [text, setText] = useState(initialText);
   const [listening, setListening] = useState(false);
@@ -45,6 +47,9 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry, mo
   const [shopping, setShopping] = useState<EntryDraft | null>(null);
   const [shopName, setShopName] = useState("");
   const [shopPrice, setShopPrice] = useState("");
+  // tela de Compras: varios itens numa frase
+  const [rows, setRows] = useState<ShopRow[] | null>(null);
+  const [rowsListId, setRowsListId] = useState("");
   const [saving, setSaving] = useState(false);
   const recRef = useRef<Recognition | null>(null);
   const textRef = useRef(initialText);
@@ -61,6 +66,16 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry, mo
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Não consegui interpretar."); setBusy(false); return; }
+      if (data.shopping) {
+        const sp = data.shopping as ShoppingParseResponse;
+        setRowsListId(sp.listId);
+        setRows(sp.items.map((it, i) => ({
+          key: i, name: it.name, price: it.amount == null ? "" : priceToText(it.amount),
+          shopCategory: it.shopCategory, listItemId: it.listItemId,
+        })));
+        setBusy(false);
+        return;
+      }
       const { draft, note } = data as ParseResponse;
       if (draft.kind === "shopping") {
         setShopping(draft); setShopName(draft.description); setShopPrice(priceToText(draft.amount));
@@ -146,6 +161,38 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry, mo
     onClose();
   }
 
+  async function saveRows() {
+    if (!rows) return;
+    const valid = rows.filter((r) => r.name.trim());
+    if (valid.length === 0) { setError("Nenhum item para salvar."); return; }
+    setSaving(true); setError("");
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setSaving(false); return; }
+    let failed = "";
+    for (const r of valid) {
+      const price = parsePrice(r.price);
+      let err: { message: string } | null = null;
+      if (r.listItemId) {
+        // ja esta na lista: com valor marca como comprado; sem valor nao ha nada a fazer
+        if (price > 0) ({ error: err } = await supabase.from("shopping_list_items")
+          .update({ checked: true, price }).eq("id", r.listItemId));
+      } else {
+        ({ error: err } = await supabase.from("shopping_list_items").insert({
+          list_id: rowsListId, user_id: user.id, item_id: null, name: r.name.trim(), qty: "1 un",
+          category: r.shopCategory, estimated_price: price > 0 ? price : null,
+          price: price > 0 ? price : null, checked: price > 0, position: 999,
+        }));
+      }
+      if (err) { failed = err.message; break; }
+    }
+    setSaving(false);
+    if (failed) { setError("Erro ao salvar: " + failed); return; }
+    window.dispatchEvent(new Event("finapp:data-changed"));
+    onSaved?.();
+    onClose();
+  }
+
   function asExpense() {
     if (!shopping) return;
     onEntry({
@@ -163,11 +210,51 @@ export default function VoiceEntryModal({ initialText = "", onClose, onEntry, mo
           <button type="button" onClick={onClose} className="text-white/45 hover:text-white p-1" aria-label="Fechar"><X size={20} /></button>
         </div>
 
-        {!shopping ? (
+        {rows ? (
+          <>
+            <p className="text-xs text-white/45">
+              Confira os itens. Com valor, entram como comprados; sem valor, só vão para a lista da semana.
+            </p>
+            <div className="space-y-2">
+              {rows.map((r) => {
+                const bought = parsePrice(r.price) > 0;
+                return (
+                  <div key={r.key} className="glass-card p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input value={r.name} aria-label="Item"
+                        onChange={(e) => setRows(rows.map((x) => x.key === r.key ? { ...x, name: e.target.value } : x))}
+                        className="flex-1 min-w-0 glass-input px-3 py-2 text-base text-white" />
+                      <button type="button" aria-label="Remover item"
+                        onClick={() => setRows(rows.filter((x) => x.key !== r.key))}
+                        className="text-white/40 hover:text-white p-1"><X size={18} /></button>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input value={r.price} inputMode="decimal" placeholder="Valor (R$)" aria-label="Valor pago"
+                        onChange={(e) => setRows(rows.map((x) => x.key === r.key ? { ...x, price: e.target.value } : x))}
+                        className="w-28 glass-input px-3 py-2 text-base text-white" />
+                      <p className="text-xs text-white/40 min-w-0">
+                        {shopCat(r.shopCategory).label} · {bought
+                          ? (r.listItemId ? "marca como comprado" : "comprado agora")
+                          : (r.listItemId ? "já está na lista" : "vai para a lista")}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {error && <p className="text-xs text-red-400">{error}</p>}
+            <button type="button" onClick={saveRows} disabled={saving || rows.length === 0}
+              className="w-full bg-[#6366F1] hover:bg-[#4F46E5] text-white text-sm font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
+              {saving ? "Salvando..." : `Salvar ${rows.length} ${rows.length === 1 ? "item" : "itens"}`}
+            </button>
+            <button type="button" onClick={() => { setRows(null); setError(""); }}
+              className="w-full text-white/45 text-xs py-1 hover:text-white">Voltar e refazer</button>
+          </>
+        ) : !shopping ? (
           <>
             <p className="text-xs text-white/45">
               {mode === "shopping"
-                ? <>Diga o item e quanto pagou, por exemplo: &quot;sabonete 9&quot; ou &quot;comprei arroz por 28&quot;. Ele entra na lista da semana já como comprado.</>
+                ? <>Diga um ou vários itens: &quot;sabonete 9, arroz 28&quot; (comprados) ou &quot;leite e ovos na lista&quot; (só adiciona à lista). Você confere antes de salvar.</>
                 : <>Diga ou digite, por exemplo: &quot;gastei 45 no mercado&quot;, &quot;300 no cartão Nubank em 3x&quot;,
                   &quot;recebi 600 do cliente&quot; ou &quot;comprei arroz por 28&quot;. Você confere antes de salvar.</>}
             </p>
