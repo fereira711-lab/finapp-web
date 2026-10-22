@@ -4,7 +4,7 @@ Aplicacao web financeira pessoal baseada em Next.js, React, TypeScript e Supabas
 
 ## Objetivo
 
-Centralizar saldo, transacoes, agenda financeira, cartoes, metas, relatorios e assistencia por IA em uma interface unica com operacao manual dos lancamentos financeiros.
+Centralizar saldo, transacoes, agenda financeira, cartoes, metas, relatorios, compras semanais, rotina da casa e assistencia por IA em uma interface unica, com operacao manual dos lancamentos financeiros e registro de gastos e compras por voz ou texto.
 
 ## Stack
 
@@ -14,7 +14,7 @@ Centralizar saldo, transacoes, agenda financeira, cartoes, metas, relatorios e a
 - Supabase
 - Tailwind CSS
 - Recharts
-- Anthropic SDK
+- IA da NVIDIA (principal) e Anthropic SDK (reserva)
 
 ## Estrutura principal
 
@@ -34,6 +34,9 @@ Centralizar saldo, transacoes, agenda financeira, cartoes, metas, relatorios e a
 - metas
 - relatorios
 - regras de categoria
+- compras semanais (lista fixa, orcamento, historico, duracao dos itens e alerta de estoque)
+- rotina da casa (calendario do mes e tarefas)
+- registro de gastos e compras por voz ou texto, inclusive pela Siri (`/?voz=`, `/shopping?voz=`)
 - chat com IA
 
 ## Endpoints identificados
@@ -59,11 +62,12 @@ Variaveis identificadas hoje:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `ANTHROPIC_API_KEY`
+- `ANTHROPIC_API_KEY` (reserva)
+- `NVIDIA_API_KEY` e `NVIDIA_MODEL` (IA principal; `NVIDIA_MODEL` aceita varios modelos separados por virgula; ver `src/lib/ai/nvidia.ts`)
 
 Leitura operacional atual das rotas sensiveis:
 
-- `ai-chat`: usa `ANTHROPIC_API_KEY`, exige usuario autenticado e consulta dados financeiros via Supabase no servidor;
+- `ai-chat`: usa a NVIDIA quando ha `NVIDIA_API_KEY` e cai para a Anthropic (`ANTHROPIC_API_KEY`) se a NVIDIA falhar; exige usuario autenticado e consulta dados financeiros via Supabase no servidor;
 - `notifications/check`: exige usuario autenticado e consulta contas a pagar via sessao server-side;
 - `auth/callback`: troca o `code` por sessao Supabase no servidor.
 
@@ -84,5 +88,5 @@ Camada Supabase atual:
 ## Observacoes
 
 - este repositório usa Supabase no cliente, middleware e servidor;
-- existe endpoint de chat com IA via Anthropic;
+- existe endpoint de chat com IA (NVIDIA, com Anthropic como reserva);
 - credenciais reais nao devem ser documentadas no repositório.

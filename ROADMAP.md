@@ -20,13 +20,17 @@ Consolidar o `finapp-web` como aplicacao financeira pessoal com boa base documen
 - contas e saldo
 - cartoes de credito
 - contas a pagar
-- metas e recorrencias
+- metas
 - relatorios
+- compras semanais
+- rotina da casa
+- registro por voz ou texto
 
 ### Integracoes
 
 - Supabase
-- Anthropic
+- NVIDIA (IA principal)
+- Anthropic (reserva)
 
 ### Governanca tecnica
 
@@ -63,15 +67,25 @@ Consolidar o `finapp-web` como aplicacao financeira pessoal com boa base documen
 - filtro "Todas" em /transactions, alcancando transacoes fora de 3 meses
 - dashboard recarrega apos mutacoes em outras telas
 - registro por voz/texto com IA ("Falar e registrar" no dashboard e atalho da Siri via /?voz=): a IA preenche o Lancamento Rapido e o usuario confere antes de salvar
+- modulo de recorrencia e integracao bancaria (Pluggy) removidos (2026-07-14); lancamentos 100% manuais
+- edicao e exclusao de categorias criadas; metas reordenaveis por arrastar com total das metas (2026-10-17)
+- compras semanais: lista fixa, orcamento, historico, duracao dos itens, alerta de itens acabando, aprendizado automatico na 2a compra, fechamento por categoria e nova compra na mesma semana (2026-10-17 a 2026-10-20)
+- registro de compras por voz ou texto com varios itens, inclusive pela Siri em /shopping?voz= (2026-10-20 e 2026-10-21)
+- rotina da casa: calendario do mes, tarefas e encaixe automatico (2026-10-17)
+- menu com ordem personalizavel, resumos de Casa e Compras no Dashboard, escala geral do texto (2026-10-17)
+- IA da NVIDIA como principal, com lista de modelos de reserva e fallback do chat para a Anthropic (2026-10-17)
 
 ## Pendencias abertas
 
 - confirmar contrato das variaveis de ambiente
 - manter documentacao de integracoes atualizada
-- revisar periodicamente a superficie de IA e webhooks
+- revisar periodicamente a superficie de IA
 - manter a lista real de endpoints `src/app/api/` e de integracoes `src/lib/supabase/` coerente com README e AGENTS
 - manter documentado quais rotas exigem sessao, quais usam segredo server-side e quais escrevem no Supabase
 - manter claro que `SUPABASE_SERVICE_ROLE_KEY` fica restrita aos fluxos server-to-server, sem contaminar rotas autenticadas por sessao
+- conferir no painel da Vercel se `NVIDIA_API_KEY` e/ou `ANTHROPIC_API_KEY` existem em producao (sem nenhuma das duas a IA falha)
+- conferir se a migration `011_allow_multiple_shopping_lists_per_week.sql` esta aplicada no Supabase antes de depender de varias listas de compras por semana
+- `.env.local.txt` continua no disco (ignorado pelo Git); apagar ou renomear fica com o dono
 
 ## Nao fazer sem combinar
 

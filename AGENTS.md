@@ -2,7 +2,7 @@
 
 ## Escopo
 
-Este projeto e um app financeiro pessoal em Next.js com Supabase, integracao bancaria e assistencia por IA.
+Este projeto e um app financeiro pessoal em Next.js com Supabase e assistencia por IA (NVIDIA, com a Anthropic como reserva). Os lancamentos sao manuais: a integracao bancaria (Pluggy) e o modulo de recorrencia foram removidos em 2026-07-14. Alem das financas, tem compras semanais, rotina da casa e registro de gastos e compras por voz ou texto.
 
 ## Regras
 
@@ -17,8 +17,8 @@ Este projeto e um app financeiro pessoal em Next.js com Supabase, integracao ban
 
 - autenticacao e sessao
 - Supabase
-- webhooks Pluggy
-- tokenizacao Pluggy
+- IA (NVIDIA e Anthropic): chaves em variaveis de ambiente, nunca no codigo
+- dados financeiros, de compras e de casa do usuario
 - chat com IA
 
 ## Superficie real identificada
@@ -26,18 +26,18 @@ Este projeto e um app financeiro pessoal em Next.js com Supabase, integracao ban
 - `src/app/api/ai-chat/route.ts`
 - `src/app/api/auth/callback/route.ts`
 - `src/app/api/notifications/check/route.ts`
-- `src/app/api/pluggy-token/route.ts`
-- `src/app/api/webhooks/pluggy/route.ts`
+- `src/app/api/shopping/suggest-duration/route.ts`
+- `src/app/api/quick-entry/parse/route.ts`
 - `src/lib/supabase/client.ts`
 - `src/lib/supabase/middleware.ts`
 - `src/lib/supabase/server.ts`
 
 ## Leitura de risco atual
 
-- `src/app/api/ai-chat/route.ts`: rota com IA e dados financeiros do usuario autenticado;
+- `src/app/api/ai-chat/route.ts`: rota com IA e dados financeiros do usuario autenticado (NVIDIA quando ha `NVIDIA_API_KEY`, Anthropic como reserva);
 - `src/app/api/notifications/check/route.ts`: rota autenticada de leitura financeira server-side;
-- `src/app/api/pluggy-token/route.ts`: rota que depende de segredos do servidor para gerar token de integracao;
-- `src/app/api/webhooks/pluggy/route.ts`: rota de webhook com assinatura e escrita server-side em Supabase;
+- `src/app/api/shopping/suggest-duration/route.ts`: rota com sessao; so le; chama a IA da NVIDIA;
+- `src/app/api/quick-entry/parse/route.ts`: rota com sessao; so interpreta a frase e devolve rascunho, nao grava; chama a IA da NVIDIA;
 - `src/app/api/auth/callback/route.ts`: rota de autenticacao e sessao;
 - `src/lib/supabase/server.ts`: ponto critico para acesso server-side ao Supabase com sessao por cookies;
 - `src/lib/supabase/middleware.ts`: ponto critico para protecao de rotas privadas e refresh de sessao.
